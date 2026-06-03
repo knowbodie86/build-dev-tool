@@ -234,6 +234,19 @@
     flex-wrap: wrap;
   }
   .build-toolbar .status { font-size: 12.5px; }
+  .build-toolbar.top {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+    padding-bottom: 16px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--gray-200);
+  }
+  .build-toolbar.top .pubtitle {
+    font-family: var(--mono); font-size: 11px; color: var(--gray-400);
+    margin-left: 2px; word-break: break-word;
+  }
+  .build-toolbar.top .pubtitle strong { color: var(--gray-1200); }
 
   /* Output styling — realtor.com brand */
   .output-meta {
@@ -423,6 +436,10 @@
 <script>
 const BASE_ID = "appasWDNUZc8yQFnh";
 const ATLASSIAN_CLOUD_ID = "cf0dc8c2-47a8-4929-8d48-2e03205ce9da";
+const CRMOPS_SPACE_ID = "117400502402";
+// Parent folder published build pages go under:
+// https://moveinc.atlassian.net/wiki/spaces/CRMOPS/folder/118948921497
+const BUILD_PARENT_ID = "118948921497";
 
 // ---- Fully-qualified MCP tool names this artifact calls ----
 const T = {
@@ -430,6 +447,7 @@ const T = {
   gleanChat:      "mcp__8775b965-62af-4bcf-a7b0-cc8a0f428de9__chat",
   gleanRead:      "mcp__8775b965-62af-4bcf-a7b0-cc8a0f428de9__read_document",
   confluenceGet:  "mcp__9a2de39e-443f-4e1e-b4d1-05b86f320d29__getConfluencePage",
+  confluenceCreate:"mcp__9a2de39e-443f-4e1e-b4d1-05b86f320d29__createConfluencePage",
   confluenceCql:  "mcp__9a2de39e-443f-4e1e-b4d1-05b86f320d29__searchConfluenceUsingCql",
   driveRead:      "mcp__818571b5-9274-4ad8-bbd0-c5403be0a5c0__read_file_content",
   slackThread:    "mcp__868faa24-f3b1-458c-9d43-00dbc31bd272__slack_read_thread",
@@ -455,7 +473,8 @@ const TABLES = [
       "fldLBzn9wMmHdwPPX", // Campaign Name
       "fldH9NWyRQ0nx4vO1", // Ticket Created Date
       "fldij6tSwPSX06xtO", // Asana Creative Ticket
-      "fldLA9X6TtY3BJH2A"  // Submitter Name
+      "fldLA9X6TtY3BJH2A", // Submitter Name
+      "fldNWgaaBZb4CfVVc"  // Product Owner (used as assignee fallback)
     ],
     fieldMap: {
       fld80BZfgWcAfMBLB: "ideaName",
@@ -463,7 +482,8 @@ const TABLES = [
       fldLBzn9wMmHdwPPX: "campaignName",
       fldH9NWyRQ0nx4vO1: "createdDate",
       fldij6tSwPSX06xtO: "asanaUrl",
-      fldLA9X6TtY3BJH2A: "submitter"
+      fldLA9X6TtY3BJH2A: "submitter",
+      fldNWgaaBZb4CfVVc: "productOwner"
     }
   },
   {
@@ -480,7 +500,8 @@ const TABLES = [
       "flddlvrnWXsUvhVXF", // Status
       "fld2Z8RAJdEtYEwAH", // Test Idea Backlog (link to parent)
       "fldxgLa4Hcwi2RDTa", // Working Sprint
-      "fldyQHVuzgqfMXqgX"  // Priority for Sprint
+      "fldyQHVuzgqfMXqgX", // Priority for Sprint
+      "fld4dmUzhOG0idWxE"  // Assignees
     ],
     fieldMap: {
       fldxosprBXGogFFJc: "ideaName",
@@ -491,7 +512,8 @@ const TABLES = [
       flddlvrnWXsUvhVXF: "status",
       fld2Z8RAJdEtYEwAH: "parentLink",
       fldxgLa4Hcwi2RDTa: "sprint",
-      fldyQHVuzgqfMXqgX: "sprintPriority"
+      fldyQHVuzgqfMXqgX: "sprintPriority",
+      fld4dmUzhOG0idWxE: "assignees"
     }
   }
 ];
@@ -1023,6 +1045,106 @@ function ticketDisplayName(bundle) {
   return bundle.ticket.ideaName || (bundle.parent && bundle.parent.ideaName) || bundle.ticket.parentLink || "(no name)";
 }
 
+// ---------- Publish to Confluence ----------
+
+function todayIsoDate() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+// The human ticket name: prefer the parent backlog's Idea Name (the sprint
+// card's primary field is a "Test Phase" formula), else the record's own name.
+function ticketNameForTitle(bundle) {
+  if (bundle.parent && bundle.parent.ideaName) return bundle.parent.ideaName;
+  return bundle.ticket.ideaName || bundle.ticket.parentLink || "Untitled";
+}
+
+// Assignees come ONLY from the child (sprint card) Assignees field — never the
+// parent backlog or Product Owner.
+function assigneesForTitle(bundle) {
+  let a = (bundle.ticket.assignees || "").trim();
+  a = a.replace(/\s*\n\s*/g, ", ").replace(/\s*,\s*/g, ", ").trim();
+  return a || "Unassigned";
+}
+
+// Page-title convention: [airtable ticket name] - [ASSIGNEES] - [CURRENT DATE]
+function buildPageTitle(bundle) {
+  return `${ticketNameForTitle(bundle)} - ${assigneesForTitle(bundle)} - ${todayIsoDate()}`;
+}
+
+// Map our rendered output HTML to Confluence-flavored HTML (panels use
+// data-type attributes instead of CSS classes).
+function htmlForConfluence(html) {
+  if (!html) return "";
+  let body = String(html);
+  body = body.replace(/<div\s+class="output-meta">([\s\S]*?)<\/div>/i, '<div data-type="panel-info">$1</div>');
+  body = body.replace(/<div\s+class="panel-info">([\s\S]*?)<\/div>/gi, '<div data-type="panel-info">$1</div>');
+  body = body.replace(/<div\s+class="panel-success">([\s\S]*?)<\/div>/gi, '<div data-type="panel-success">$1</div>');
+  body = body.replace(/<div\s+class="panel-error">([\s\S]*?)<\/div>/gi, '<div data-type="panel-error">$1</div>');
+  body = body.replace(/<blockquote>([\s\S]*?)<\/blockquote>/gi, '<div data-type="panel-warning">$1</div>');
+  return body;
+}
+
+let lastRenderedBuild = null;
+
+async function publishToConfluence(bundle, html) {
+  const title = buildPageTitle(bundle);
+  const t = bundle.ticket;
+  const ticketLink = `https://airtable.com/${BASE_ID}/${t.sourceTableId}/${t.id}`;
+  const lead = `<p><strong>Source ticket:</strong> <a href="${ticketLink}">${escapeHtml(ticketNameForTitle(bundle))}</a> · <strong>Record:</strong> <code>${escapeHtml(t.id)}</code>${t.phase ? ` · <strong>Phase:</strong> ${escapeHtml(t.phase)}` : ""} · <strong>Assignees:</strong> ${escapeHtml(assigneesForTitle(bundle))}</p>`;
+  const body = lead + htmlForConfluence(sanitizeHtml(html));
+  const raw = await window.cowork.callMcpTool(T.confluenceCreate, {
+    cloudId: ATLASSIAN_CLOUD_ID,
+    spaceId: CRMOPS_SPACE_ID,
+    parentId: BUILD_PARENT_ID,
+    title,
+    body,
+    contentFormat: "html"
+  });
+  console.log("[build-dev-tool] createConfluencePage raw:", raw);
+  return { res: normalizeMcpResponse(raw), title };
+}
+
+function pickConfluenceUrl(res) {
+  if (!res) return null;
+  if (typeof res.url === "string") return res.url;
+  if (res._links) {
+    const base = res._links.base || "https://moveinc.atlassian.net/wiki";
+    if (typeof res._links.webui === "string") return base.replace(/\/wiki$/, "") + "/wiki" + res._links.webui;
+  }
+  if (typeof res.id === "string" || typeof res.id === "number") {
+    return `https://moveinc.atlassian.net/wiki/spaces/CRMOPS/pages/${res.id}`;
+  }
+  return null;
+}
+
+async function onPublishClick() {
+  if (!lastRenderedBuild) return;
+  const btn = $("publishBtn");
+  const stat = $("publishStatus");
+  if (!btn || !stat) return;
+  btn.disabled = true;
+  stat.className = "status";
+  stat.innerHTML = `<span class="spinner"></span> Publishing to Confluence…`;
+  try {
+    const { res, title } = await publishToConfluence(lastRenderedBuild.bundle, lastRenderedBuild.html);
+    const url = pickConfluenceUrl(res);
+    stat.className = "status success";
+    stat.innerHTML = url
+      ? `Published <strong>${escapeHtml(title)}</strong> — <a href="${url}" target="_blank" rel="noreferrer">open in Confluence</a>`
+      : `Published <strong>${escapeHtml(title)}</strong>.`;
+    btn.textContent = "Published ✓";
+  } catch (e) {
+    console.error(e);
+    stat.className = "status error";
+    stat.innerHTML = "Error: " + escapeHtml(e && e.message ? e.message : String(e));
+    btn.disabled = false;
+  }
+}
+
 function renderOutput(bundle, linkReads, html) {
   const out = $("output");
   const t = bundle.ticket, p = bundle.parent;
@@ -1052,6 +1174,11 @@ function renderOutput(bundle, linkReads, html) {
 
   out.innerHTML = `
     <div class="card">
+      <div class="build-toolbar top">
+        <button class="primary" id="publishBtn">Publish to Confluence</button>
+        <span class="pubtitle">Page: <strong>${escapeHtml(buildPageTitle(bundle))}</strong></span>
+        <span class="status" id="publishStatus"></span>
+      </div>
       <div class="ticket-card">
         <div class="ticket-title">${escapeHtml(ticketDisplayName(bundle))}</div>
         <div class="ticket-meta">
@@ -1070,6 +1197,10 @@ function renderOutput(bundle, linkReads, html) {
   out.classList.remove("hidden");
   const outputEl = out.querySelector(".output");
   addCopyButtons(outputEl);
+
+  lastRenderedBuild = { bundle, html };
+  const pubBtn = $("publishBtn");
+  if (pubBtn) pubBtn.addEventListener("click", onPublishClick);
 
   const copyAll = $("copyAllBtn");
   if (copyAll) copyAll.addEventListener("click", async () => {
