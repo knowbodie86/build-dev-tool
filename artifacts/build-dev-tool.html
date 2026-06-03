@@ -1,0 +1,1307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Build / Dev Tool — realtor.com</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: light;
+    --red-600:   #D92228;
+    --red-700:   #B81D22;
+    --gray-100:  #F2F0EF;
+    --gray-200:  #E9E7E4;
+    --gray-400:  #5A554F;
+    --gray-1200: #1A1816;
+    --teal:      #008583;
+    --orange:    #CC4E00;
+    --blue:      #0D74CE;
+    --font:      'Galano Grotesque', 'Poppins', Arial, Helvetica, sans-serif;
+    --mono:      'JetBrains Mono', 'Courier New', monospace;
+    --rdc-bg:    #e6e6e6;
+    --rdc-card-border: rgba(34,31,31,0.16);
+    --rdc-card-shadow: 0 1px 2px rgba(34,31,31,0.06), 0 4px 12px rgba(34,31,31,0.08), 0 12px 28px rgba(34,31,31,0.06);
+    --rdc-radius-card: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body, html {
+    background: var(--rdc-bg);
+    color: var(--gray-1200);
+    font-family: var(--font);
+    font-size: 15px;
+    min-height: 100vh;
+    line-height: 1.55;
+  }
+  .app { max-width: 1100px; margin: 0 auto; padding: 0 0 80px; }
+
+  /* Hero header — full-bleed realtor red band with white logo pill + tool title */
+  .header {
+    padding: 28px 40px;
+    margin-bottom: 28px;
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    position: relative;
+    z-index: 0;
+  }
+  .header::before {
+    content: '';
+    position: absolute;
+    top: 0; bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100vw;
+    background: var(--red-600);
+    box-shadow: 0 2px 14px rgba(217,34,40,0.22);
+    z-index: -1;
+  }
+  .header > * { position: relative; z-index: 1; }
+  .rdc-logo {
+    background: #fff;
+    border-radius: 999px;
+    padding: 6px 22px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.10);
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .rdc-logo svg { display: block; height: 38px; width: auto; }
+  .header-divider { background: rgba(255,255,255,0.4); height: 44px; width: 1px; flex-shrink: 0; }
+  .header-meta { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+  .header-tool-name {
+    color: #fff;
+    font-family: var(--font);
+    font-size: 30px;
+    font-weight: 800;
+    letter-spacing: -0.6px;
+    line-height: 1.05;
+  }
+  .header-subtitle {
+    color: rgba(255,255,255,0.82);
+    font-size: 12.5px;
+    font-family: var(--mono);
+    letter-spacing: 0.04em;
+    margin-top: 4px;
+  }
+
+  .content { padding: 0 32px; }
+
+  .card {
+    background: #fff;
+    border: 1px solid var(--rdc-card-border);
+    border-radius: var(--rdc-radius-card);
+    padding: 22px 24px;
+    margin-bottom: 18px;
+    box-shadow: var(--rdc-card-shadow);
+  }
+  label {
+    display: block;
+    font-weight: 700;
+    margin: 0 0 8px;
+    color: var(--gray-1200);
+    font-size: 11px;
+    font-family: var(--mono);
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+  input[type=text], textarea {
+    width: 100%;
+    border: 1px solid var(--gray-400);
+    border-radius: 3px;
+    padding: 10px 12px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    background: var(--gray-100);
+    color: var(--gray-1200);
+    transition: border-color .12s, background .12s;
+    caret-color: var(--red-600);
+  }
+  input[type=text]:focus, textarea:focus { outline: none; border-color: var(--gray-1200); background: #fff; }
+  input[type=text]::placeholder, textarea::placeholder { color: var(--gray-400); }
+  textarea { min-height: 110px; resize: vertical; line-height: 1.6; }
+
+  .ticket-row { display: flex; gap: 8px; align-items: stretch; }
+  .ticket-row input[type=text] { flex: 1; }
+  .ticket-row .fetch-btn { white-space: nowrap; padding: 0 18px; font-weight: 700; }
+
+  .ticket-preview {
+    margin-top: 12px;
+    background: #fff;
+    border: 1px solid var(--gray-400);
+    border-radius: 4px;
+    padding: 14px 16px;
+    font-size: 13px;
+  }
+  .ticket-preview .pv-title { font-weight: 700; color: var(--gray-1200); margin-bottom: 4px; font-size: 14.5px; }
+  .ticket-preview .pv-meta { color: var(--gray-400); font-size: 12px; font-family: var(--mono); margin-bottom: 10px; }
+  .ticket-preview .pv-parent {
+    margin: 10px 0; padding: 8px 12px; background: var(--gray-100);
+    border-left: 3px solid var(--blue); border-radius: 0 4px 4px 0; font-size: 12.5px;
+  }
+  .ticket-preview .pv-parent .pv-parent-label {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .07em; text-transform: uppercase;
+    color: var(--blue); font-weight: 700; margin-bottom: 2px;
+  }
+  .ticket-preview details { margin-top: 8px; }
+  .ticket-preview details summary {
+    cursor: pointer; color: var(--red-600); font-weight: 700; font-size: 11px;
+    font-family: var(--mono); letter-spacing: .06em; text-transform: uppercase;
+  }
+  .ticket-preview details[open] summary { margin-bottom: 8px; }
+  .ticket-preview .pv-body { white-space: pre-wrap; color: var(--gray-1200); font-size: 13px; max-height: 280px; overflow-y: auto; padding-right: 6px; }
+  .ticket-preview.error { background: rgba(217,34,40,0.06); border-color: var(--red-600); color: var(--red-600); }
+
+  /* Detected-links chips shown after a fetch */
+  .links-found { margin-top: 12px; }
+  .links-found .lf-label {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .07em; text-transform: uppercase;
+    color: var(--gray-400); font-weight: 700; margin-bottom: 6px;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--gray-100); border: 1px solid var(--gray-200);
+    border-radius: 999px; padding: 3px 11px; font-size: 11.5px;
+    font-family: var(--mono); color: var(--gray-1200); max-width: 100%;
+  }
+  .chip .chip-type {
+    font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    padding: 1px 6px; border-radius: 999px; color: #fff; flex-shrink: 0;
+  }
+  .chip .chip-url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 360px; }
+  .chip.t-confluence .chip-type { background: var(--blue); }
+  .chip.t-gdrive     .chip-type { background: #0F9D58; }
+  .chip.t-slack      .chip-type { background: #611f69; }
+  .chip.t-snowflake  .chip-type { background: #29B5E8; }
+  .chip.t-cordial    .chip-type { background: var(--red-600); }
+  .chip.t-braze      .chip-type { background: var(--orange); }
+  .chip.t-other      .chip-type { background: var(--gray-400); }
+
+  .row { margin-bottom: 16px; }
+  .row:last-child { margin-bottom: 0; }
+  .actions { display: flex; gap: 10px; align-items: center; margin-top: 4px; flex-wrap: wrap; }
+
+  button.primary {
+    background: var(--red-600);
+    color: #fff;
+    border: 1px solid var(--red-700);
+    padding: 10px 24px;
+    border-radius: 3px;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background .12s, transform .04s;
+  }
+  button.primary:hover:not(:disabled) { background: var(--red-700); }
+  button.primary:active:not(:disabled) { transform: translateY(1px); }
+  button.primary:disabled { background: var(--gray-400); border-color: var(--gray-400); cursor: not-allowed; opacity: .6; }
+
+  button.secondary {
+    background: rgba(217,34,40,0.07);
+    color: var(--red-600);
+    border: 1px solid rgba(217,34,40,0.3);
+    padding: 9px 18px;
+    border-radius: 3px;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background .12s, border-color .12s;
+  }
+  button.secondary:hover:not(:disabled) { background: rgba(217,34,40,0.14); border-color: var(--red-600); }
+  button.secondary:disabled { opacity: .4; cursor: wait; }
+
+  .status { font-size: 12px; font-family: var(--mono); color: var(--gray-400); }
+  .status.error { color: var(--red-600); }
+  .status.success { color: var(--teal); }
+  .status code { background: var(--gray-200); padding: 1px 6px; border-radius: 2px; font-size: 11px; }
+
+  .hidden { display: none !important; }
+
+  .build-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 22px;
+    padding-top: 18px;
+    border-top: 1px solid var(--gray-200);
+    flex-wrap: wrap;
+  }
+  .build-toolbar .status { font-size: 12.5px; }
+
+  /* Output styling — realtor.com brand */
+  .output-meta {
+    background: var(--gray-100);
+    border-left: 3px solid var(--red-600);
+    padding: 12px 16px;
+    border-radius: 4px;
+    margin-bottom: 16px;
+    font-size: 13.5px;
+    color: var(--gray-1200);
+  }
+  .output-meta strong { color: var(--gray-1200); }
+  .output hr { border: none; border-top: 1px solid var(--gray-200); margin: 22px 0; }
+  .output h2 {
+    font-size: 20px;
+    margin: 28px 0 12px;
+    color: var(--gray-1200);
+    border-bottom: 2px solid var(--gray-200);
+    padding-bottom: 6px;
+    font-weight: 700;
+    letter-spacing: -.2px;
+  }
+  .output h3 { font-size: 16px; margin: 22px 0 10px; color: var(--gray-1200); font-weight: 700; }
+  .output h4 { font-size: 14px; margin: 16px 0 8px; color: var(--gray-1200); font-weight: 700; }
+  .output p { margin: 10px 0; }
+  .output ul, .output ol { padding-left: 22px; margin: 10px 0; }
+  .output li { margin: 4px 0; }
+  .output table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0;
+    font-size: 13.5px;
+    background: #fff;
+  }
+  .output th, .output td {
+    border: 1px solid var(--gray-200);
+    padding: 8px 12px;
+    text-align: left;
+    vertical-align: top;
+  }
+  .output th { background: var(--gray-100); font-weight: 700; color: var(--gray-1200); font-family: var(--mono); font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; }
+  .output code {
+    background: var(--gray-200);
+    padding: 1px 6px;
+    border-radius: 2px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--gray-1200);
+  }
+  .output pre {
+    background: var(--gray-1200);
+    color: #f5f4f2;
+    padding: 14px 16px;
+    border-radius: 4px;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.55;
+  }
+  .output pre code { background: transparent; color: inherit; padding: 0; font-size: inherit; }
+  .output blockquote {
+    border-left: 3px solid var(--orange);
+    background: rgba(204,78,0,0.06);
+    padding: 10px 16px;
+    margin: 14px 0;
+    border-radius: 0 4px 4px 0;
+    color: var(--gray-1200);
+  }
+  .output .panel-info {
+    border-left: 3px solid var(--blue);
+    background: rgba(13,116,206,0.06);
+    padding: 10px 16px;
+    margin: 14px 0;
+    border-radius: 0 4px 4px 0;
+  }
+  .output .panel-success { border-left-color: var(--teal); background: rgba(0,133,131,0.07); padding: 10px 16px; margin: 14px 0; border-radius: 0 4px 4px 0; border-left-width: 3px; border-left-style: solid; }
+  .output .panel-error { border-left: 3px solid var(--red-600); background: rgba(217,34,40,0.06); padding: 10px 16px; margin: 14px 0; border-radius: 0 4px 4px 0; }
+
+  /* Code block + copy button wrapper (injected after render) */
+  .code-wrap { position: relative; margin: 14px 0; }
+  .code-wrap pre { margin: 0; }
+  .code-wrap .copy-btn {
+    position: absolute; top: 8px; right: 8px;
+    background: rgba(255,255,255,0.12); color: #fff;
+    border: 1px solid rgba(255,255,255,0.25);
+    border-radius: 3px; padding: 3px 10px;
+    font-family: var(--mono); font-size: 10px; font-weight: 700;
+    letter-spacing: .06em; text-transform: uppercase; cursor: pointer;
+    transition: background .12s;
+  }
+  .code-wrap .copy-btn:hover { background: rgba(255,255,255,0.22); }
+  .code-wrap .copy-btn.copied { background: var(--teal); border-color: var(--teal); }
+
+  .ticket-card {
+    background: var(--gray-100);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    font-size: 13.5px;
+  }
+  .ticket-card .ticket-title { font-size: 16.5px; font-weight: 700; color: var(--gray-1200); margin-bottom: 4px; }
+  .ticket-card .ticket-meta { color: var(--gray-400); font-size: 12px; font-family: var(--mono); }
+  details.desc-design {
+    background: #fff;
+    border: 1px solid var(--gray-200);
+    border-radius: 4px;
+    padding: 10px 14px;
+    margin-bottom: 14px;
+  }
+  details.desc-design summary {
+    cursor: pointer;
+    font-weight: 700;
+    color: var(--gray-1200);
+    font-size: 11px;
+    font-family: var(--mono);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+  details.desc-design[open] summary { margin-bottom: 10px; }
+  details.desc-design .body { font-size: 13.5px; white-space: pre-wrap; color: var(--gray-1200); }
+  .spinner {
+    display: inline-block;
+    width: 12px; height: 12px;
+    border: 2px solid var(--gray-200);
+    border-top-color: var(--red-600);
+    border-radius: 50%;
+    animation: spin .9s linear infinite;
+    vertical-align: -2px;
+    margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div class="rdc-logo">
+      <svg viewBox="0 0 643 182.4" xmlns="http://www.w3.org/2000/svg" aria-label="realtor.com">
+        <path fill="#010101" d="M334.24,72.99c-13.66,0-25.79,10.36-25.79,27.44s12.01,27.44,25.79,27.44,25.79-10.48,25.79-27.56-12.01-27.33-25.79-27.33ZM342.84,122.46c-2.47,2.59-5.65,3.53-8.6,3.53s-6.24-.94-8.72-3.53c-3.77-4-5.65-11.42-5.65-22.03s1.88-18.26,5.77-22.03c2.36-2.47,5.65-3.53,8.6-3.53s6.12.94,8.6,3.53c3.89,3.89,5.77,11.31,5.77,22.03s-2,18.14-5.77,22.03Z"/>
+        <path fill="#010101" d="M399.13,79.94c0-2.24-.71-3.77-1.77-4.95-1.3-1.3-3.42-2-5.89-2-4,0-6.6,1.53-8.72,3.3-2.36,2.24-4.59,5.18-6.36,10.72h-.35c0-.82.24-11.54.24-12.13,0-.35-.24-.71-.83-.71h-16.49v1.06c1.41.12,2.83.24,4.12,1.18,1.06.71,1.88,1.77,2.12,3.3.35,1.53.35,5.89.35,7.77v25.09c0,3.06-.12,6.24-.47,8.36-.71,2.36-1.53,3.18-3.18,4-1.06.47-2.24.71-3.18.82v1.06h24.38v-1.06c-1.06-.12-1.88-.24-2.95-.71-.94-.35-1.65-1.18-2.36-2.47-1.06-2.24-1.65-4.71-1.65-10.6v-5.56c0-3.38.08-6.7.5-10.07,1.1-8.8,5.51-17.06,8.69-17.06,1.41,0,2.24,1.41,3.06,3.42.94,2.24,2.12,3,5.54,3s5.18-2.71,5.18-5.77Z"/>
+        <path fill="#010101" d="M432.62,124.58c-3.77,0-7.07-1.53-9.19-3.89-3.3-3.65-5.65-9.89-5.65-21.32s2.36-18.37,5.65-21.67c2-1.77,4.71-2.83,7.66-2.83,5.3,0,7.07,2,8.48,8.36.59,4,2.47,6.24,5.89,6.24,3.06,0,5.06-1.65,5.06-4.83,0-2.36-1.18-4.71-3.18-6.48-2.71-2.71-6.95-5.18-16.14-5.18-14.02,0-24.85,12.13-24.85,27.44,0,10.84,3.89,17.67,8.95,21.91,3.89,3.3,8.95,5.54,15.9,5.54,11.19,0,17.78-7.42,20.38-16.96l-1.77-.59c-1.88,6.12-6.36,14.25-17.2,14.25Z"/>
+        <path fill="#010101" d="M481.32,72.99c-13.66,0-25.79,10.36-25.79,27.44s12.01,27.44,25.79,27.44,25.79-10.48,25.79-27.56-12.01-27.33-25.79-27.33ZM489.92,122.46c-2.47,2.59-5.65,3.53-8.6,3.53s-6.24-.94-8.72-3.53c-3.77-4-5.65-11.42-5.65-22.03s1.88-18.26,5.77-22.03c2.36-2.47,5.65-3.53,8.6-3.53s6.12.94,8.6,3.53c3.89,3.89,5.77,11.31,5.77,22.03s-2,18.14-5.77,22.03Z"/>
+        <path fill="#010101" d="M588.53,120.81c-.47-1.88-.59-4.83-.59-8.01v-24.26c0-5.89-1.18-9.54-3.77-11.9-2.36-2.36-5.3-3.65-10.36-3.65-4.59,0-7.89,1.18-10.84,3.3-2.59,1.77-4.83,4.24-6.83,8.95h-.35c-.24-4-1.41-6.48-3.3-8.48-2.24-2.47-5.65-3.77-10.36-3.77-5.06,0-8.6,1.3-11.19,3.42-2.71,1.88-4.71,4.48-6.36,8.6h-.47c0-.59.24-9.54.24-10.13,0-.47-.12-.71-.71-.71h-16.49v1.06c1.41.12,2.94.35,4,1.06,1.06.59,1.65,1.65,2,3.3.35,1.65.35,4.83.35,7.89v24.62c0,3.42,0,6.48-.35,8.48-.47,2.59-1.53,3.53-3.65,4.36-.82.35-2.12.82-3.06.94v.94h24.5v-1.06c-1.88-.24-3.3-.71-4.24-1.53-.94-.71-1.53-1.77-1.88-3.3-.59-2.24-.59-5.18-.59-8.83v-10.26c0-5.42.35-9.07,1.65-12.72,2.12-6.01,5.77-11,11.31-11,3.3,0,5.54,1.18,6.95,3.65.82,1.77,1.41,4.36,1.41,7.66v22.67c0,3.65-.12,7.07-.71,9.19-.24,1.53-.94,2.59-2.24,3.3-.94.59-2.12.94-3.77,1.18v1.06h23.79v-.94c-1.53-.24-2.59-.71-3.53-1.18-1.3-.82-2-2.12-2.59-3.77-.47-1.77-.35-4.83-.35-8.36v-10.74c0-5.77.35-9.66,1.53-12.84,2.24-6.24,6.24-10.88,11.42-10.88,2.83,0,4.95,1.06,6.24,3.06,1.3,2,1.88,4.71,1.88,8.36v22.56c0,3.65,0,6.83-.47,8.83-.35,1.53-1.06,2.71-2.24,3.53-.94.71-2.12.94-3.77,1.3v1.06h24.15v-.94c-1.18-.12-2.24-.59-3.3-.94-1.77-.82-2.47-1.88-3.06-4.12Z"/>
+        <path fill="#010101" d="M300.79,123.87c-5.42,0-6.83-2.47-6.83-6.83l.24-40.28h13.19v-2.59h-13.19v-17.79h-1.53c-2.56,11-9.18,17.42-16.94,18.61v1.77l7.87-.02s-.23,37.6-.23,38.77c0,4.48.83,7.3,3.3,9.42,2.36,2,5.18,2.94,9.89,2.94,6.6,0,11.19-3.42,13.66-7.54l-.83-.82c-2.12,2.83-5.18,4.36-8.6,4.36Z"/>
+        <path fill="#010101" d="M397.84,127.75c3.22-.76,5.21-3.99,4.45-7.21-.76-3.22-3.99-5.21-7.21-4.45-3.22.76-5.21,3.99-4.45,7.21.76,3.22,3.99,5.21,7.21,4.45Z"/>
+        <path fill="#010101" d="M599.77,82.21c-.04-.43-.21-.73-.56-.88.54-.24.69-.69.69-1.12,0-.86-.65-1.33-1.66-1.33h-2.02v4.74h.82v-1.9h1.29c.47,0,.62.17.65.69l.04.48c.02.32.06.56.19.73h.84c-.15-.24-.2-.41-.22-.73l-.05-.69ZM598.31,80.98h-1.27v-1.34h1.19c.54,0,.82.22.82.67s-.28.67-.75.67Z"/>
+        <path fill="#010101" d="M597.99,76.89c-2.58,0-4.57,1.96-4.57,4.42s2,4.42,4.57,4.42,4.56-1.96,4.56-4.42-2-4.42-4.56-4.42ZM597.99,84.86c-2.07,0-3.64-1.55-3.64-3.55s1.57-3.56,3.64-3.56,3.62,1.57,3.62,3.56-1.57,3.55-3.62,3.55Z"/>
+        <path fill="#d72328" d="M274.09,124.82c-1.29-.59-2.59-1.65-3.18-4.12-.24-1.77-.24-3.89-.24-6.6v-57.71c0-4.12.12-6.95.12-9.3,0-.59-.24-.82-.83-.82h-16.37v1.06c1.88.12,2.94.35,4.12,1.06.94.71,1.53,1.77,2,3.42.24,1.53.24,5.89.24,7.66v54.65c0,2.83,0,5.06-.47,7.07-.47,2-1.65,2.94-3.18,3.65-.82.47-2.12.82-3.18.94v1.06h24.26v-1.06c-1.06-.12-2.24-.47-3.3-.94Z"/>
+        <path fill="#d72328" d="M157,74.99c-1.3-1.3-3.42-2-5.89-2-4,0-6.6,1.53-8.72,3.3-2.36,2.24-4.59,5.18-6.36,10.72h-.35c0-.82.24-11.54.24-12.13,0-.35-.24-.71-.83-.71h-16.49v1.06c1.41.12,2.83.24,4.12,1.18,1.06.71,1.88,1.77,2.12,3.3.35,1.53.35,5.89.35,7.77v25.09c0,3.06-.12,6.24-.47,8.36-.71,2.36-1.53,3.18-3.18,4-1.06.47-2.24.71-3.18.82v1.06h24.38v-1.06c-1.06-.12-1.88-.24-2.95-.71-.94-.35-1.65-1.18-2.36-2.47-1.06-2.24-1.65-4.71-1.65-10.6v-5.56c0-3.38.08-6.7.5-10.07,1.1-8.8,5.51-17.06,8.69-17.06,1.41,0,2.24,1.41,3.06,3.42.94,2.24,2.12,3,5.54,3s5.18-2.71,5.18-5.77c0-2.24-.71-3.77-1.77-4.95Z"/>
+        <path fill="#d72328" d="M248.16,124.6c-1.06-1.18-1.3-3.42-1.3-8.6v-31.35c0-8.01-7.42-11.66-17.9-11.66-5.54,0-12.96,2.12-15.9,5.42-1.53,1.53-2.47,3.3-2.47,5.65,0,3.06,2.24,4.71,4.95,4.71,3.42,0,5.54-1.53,5.65-5.65.12-3.3.71-5.54,2.59-6.83,1.41-.94,3.3-1.53,5.42-1.53,4.95,0,7.18,2,7.18,8.13v8.01c-.24,3.65-3.77,6.83-11.42,9.07-5.65,1.88-10.13,2.59-13.9,6.12-2.47,2.36-3.42,5.54-3.42,8.72,0,8.48,6.36,13.07,14.61,13.07,7.66,0,11.9-3.89,13.78-7.77h.47c.12,3.65.94,5.3,2.59,6.48,1.06.71,2.95,1.3,5.42,1.3s4.65-.54,6.43-1.06v-1.05s-.04,0-.07,0c-1.18,0-2.12-.35-2.71-1.18ZM236.27,114.57c-.12,6.01-5.54,9.54-9.66,9.54-5.18,0-8.13-3.06-8.13-10.36,0-3.53.59-6.12,2.12-7.89,1.41-1.77,3.89-3.06,7.54-4.59,2.71-1.3,6.24-2.94,8.13-5.42v18.73Z"/>
+        <path fill="#d72328" d="M202.3,110.32c-2.3,7.47-7.13,14.14-16.94,14.14-4.36,0-8.24-1.41-10.95-4.48-3.18-3.53-5.18-10.72-5.18-19.67,0-.94,0-1.59.12-2.53h34.51c.24-1.53.24-3.95.24-5.24,0-8.95-6.24-19.55-21.32-19.55-13.9,0-25.09,11.54-25.09,27.68,0,8.01,2.24,15.08,7.42,20.26,4.48,4.59,10.48,6.95,18.02,6.95,11.13,0,18.15-6.74,21.17-16.94h-.03l-1.97-.61ZM175.23,78.06c2-2,4.71-3.06,7.66-3.06,3.3,0,5.3.94,7.18,2.59,2.24,2.24,3.42,6.01,3.42,12.13,0,4.59-.71,5.54-4.24,5.54h-19.79c.71-7.77,2.83-14.61,5.77-17.2Z"/>
+        <path fill="#d72328" d="M31.32,93.42h11.04v33.34h50.31v-33.34h11.03l-36.16-37.17-36.23,37.17ZM70.76,84.58h.02c1.32-1.11,3.22-2.38,6.26-2.38,1.83,0,3.36.53,4.32,1.49.89.99,1.32,2.19,1.32,3.67,0,2.15-1.35,4.34-3.93,4.34s-3.51-1.62-4.15-3.14c-.55-1.34-1.04-2.16-1.81-2.16-2.01,0-5.07,4.57-5.87,10.24-.08.92-.16,3-.16,5.14v7.11c0,4.06.41,5.72,1.11,7.2.48.88.91,1.34,1.45,1.54.71.31,1.24.39,1.96.47l.3.03v1.01h-17.57v-1l.29-.04c.82-.1,1.53-.29,2.11-.55,1.03-.51,1.54-.99,2.01-2.55.26-1.6.32-3.99.32-5.72v-17.07c0-1.28,0-4.29-.24-5.31-.14-.89-.58-1.59-1.33-2.08-.83-.61-1.74-.68-2.7-.76l-.31-.03v-1.01s11.76,0,11.76,0c.62,0,.91.43.91.83,0,.19-.03,1.8-.07,3.65-.02,1.19-.05,2.47-.07,3.4,1.25-3.34,2.74-5.07,4.06-6.32Z"/>
+      </svg>
+    </div>
+    <div class="header-divider"></div>
+    <div class="header-meta">
+      <div class="header-tool-name">Build / Dev Tool</div>
+      <div class="header-subtitle">Move Inc. · CRM Ops · Internal tool</div>
+    </div>
+  </div>
+
+  <div class="content">
+  <div class="card">
+    <div class="row">
+      <label for="ticketInput">Airtable Link</label>
+      <div class="ticket-row">
+        <input type="text" id="ticketInput" placeholder="Paste an Airtable URL — e.g. https://airtable.com/appasWDNUZc8yQFnh/…?detail=…" autocomplete="off" />
+        <button class="secondary fetch-btn" id="fetchBtn">Fetch</button>
+      </div>
+      <div id="ticketPreview" class="ticket-preview hidden"></div>
+    </div>
+    <div class="row">
+      <label for="notesInput">Build Notes / Extra Context (optional)</label>
+      <textarea id="notesInput" placeholder="Anything to steer the build — constraints, a preferred approach, extra links to read, or specifics the ticket left out. Leave blank to build straight from the ticket + its linked docs."></textarea>
+    </div>
+    <div class="actions">
+      <button class="primary" id="submitBtn">Build It</button>
+      <button class="secondary" id="clearBtn">Clear</button>
+      <span class="status" id="status"></span>
+    </div>
+  </div>
+
+  <div id="output" class="hidden"></div>
+  </div>
+</div>
+
+<script>
+const BASE_ID = "appasWDNUZc8yQFnh";
+const ATLASSIAN_CLOUD_ID = "cf0dc8c2-47a8-4929-8d48-2e03205ce9da";
+
+// ---- Fully-qualified MCP tool names this artifact calls ----
+const T = {
+  airtableList:   "mcp__160671ab-c772-4676-88ef-4b0f7dade1b4__list_records_for_table",
+  gleanChat:      "mcp__8775b965-62af-4bcf-a7b0-cc8a0f428de9__chat",
+  gleanRead:      "mcp__8775b965-62af-4bcf-a7b0-cc8a0f428de9__read_document",
+  confluenceGet:  "mcp__9a2de39e-443f-4e1e-b4d1-05b86f320d29__getConfluencePage",
+  confluenceCql:  "mcp__9a2de39e-443f-4e1e-b4d1-05b86f320d29__searchConfluenceUsingCql",
+  driveRead:      "mcp__818571b5-9274-4ad8-bbd0-c5403be0a5c0__read_file_content",
+  slackThread:    "mcp__868faa24-f3b1-458c-9d43-00dbc31bd272__slack_read_thread",
+  snowflakeQuery: "mcp__3d182e2f-2058-4395-9892-67c01b9c141c__sql-query",
+  cordialInclude: "mcp__0e93078a-ceed-431c-a2e7-06b309d38f74__get_content_include",
+  cordialTemplate:"mcp__0e93078a-ceed-431c-a2e7-06b309d38f74__get_automation_template",
+  brazeCampaign:  "mcp__77a26f1d-addf-4234-bf82-419599e8504c__get_campaign_details",
+  brazeCanvas:    "mcp__77a26f1d-addf-4234-bf82-419599e8504c__get_canvas_details"
+};
+
+// A record URL may resolve to a record in one of two tables. The CRM Product
+// Backlog is the master ticket; the Sprint backlog card links up to a parent
+// backlog ticket. We fetch whichever the URL points at, then resolve the
+// parent so the build has the full brief.
+const TABLES = [
+  {
+    id: "tbl2IR3cQwPVgozLO",
+    name: "CRM Product Backlog",
+    isParent: true,
+    fieldIds: [
+      "fld80BZfgWcAfMBLB", // Idea Name
+      "fldlgaMbQxcIz7Z5b", // Description & Design
+      "fldLBzn9wMmHdwPPX", // Campaign Name
+      "fldH9NWyRQ0nx4vO1", // Ticket Created Date
+      "fldij6tSwPSX06xtO", // Asana Creative Ticket
+      "fldLA9X6TtY3BJH2A"  // Submitter Name
+    ],
+    fieldMap: {
+      fld80BZfgWcAfMBLB: "ideaName",
+      fldlgaMbQxcIz7Z5b: "descDesign",
+      fldLBzn9wMmHdwPPX: "campaignName",
+      fldH9NWyRQ0nx4vO1: "createdDate",
+      fldij6tSwPSX06xtO: "asanaUrl",
+      fldLA9X6TtY3BJH2A: "submitter"
+    }
+  },
+  {
+    id: "tblnXQlsxbygpUneX",
+    name: "Sprint backlog - Pod",
+    isParent: false,
+    parentLinkFieldId: "fld2Z8RAJdEtYEwAH",
+    fieldIds: [
+      "fldxosprBXGogFFJc", // Test Phase (formula)
+      "fldv7f6PVOiUUQG1u", // Parent Description (lookup)
+      "fldx79HiKgbcyiALJ", // Acceptance Criteria
+      "fld70uesTAQ9sSKVe", // Outcome & Recommendations
+      "fldZqtrTdVClsAp77", // Phase
+      "flddlvrnWXsUvhVXF", // Status
+      "fld2Z8RAJdEtYEwAH", // Test Idea Backlog (link to parent)
+      "fldxgLa4Hcwi2RDTa", // Working Sprint
+      "fldyQHVuzgqfMXqgX"  // Priority for Sprint
+    ],
+    fieldMap: {
+      fldxosprBXGogFFJc: "ideaName",
+      fldv7f6PVOiUUQG1u: "descDesign",
+      fldx79HiKgbcyiALJ: "acceptanceCriteria",
+      fld70uesTAQ9sSKVe: "outcomeNotes",
+      fldZqtrTdVClsAp77: "phase",
+      flddlvrnWXsUvhVXF: "status",
+      fld2Z8RAJdEtYEwAH: "parentLink",
+      fldxgLa4Hcwi2RDTa: "sprint",
+      fldyQHVuzgqfMXqgX: "sprintPriority"
+    }
+  }
+];
+const PARENT_TABLE = TABLES.find(t => t.isParent);
+
+// Extract a plain-text value from any Airtable cell shape.
+function extractValue(v) {
+  if (v == null) return "";
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  if (Array.isArray(v)) return v.map(extractValue).filter(Boolean).join(", ");
+  if (typeof v === "object") {
+    if (typeof v.name === "string") return v.name;
+    if (v.valuesByLinkedRecordId && typeof v.valuesByLinkedRecordId === "object") {
+      const out = [];
+      const ids = v.linkedRecordIds || Object.keys(v.valuesByLinkedRecordId);
+      for (const id of ids) {
+        const vals = v.valuesByLinkedRecordId[id];
+        if (Array.isArray(vals)) for (const x of vals) out.push(extractValue(x));
+        else if (vals != null) out.push(extractValue(vals));
+      }
+      return out.filter(Boolean).join("\n");
+    }
+    if (typeof v.email === "string") return v.name || v.email;
+    if (typeof v.url === "string") return v.url;
+  }
+  return "";
+}
+
+// Pull recXXXXXXXXXXXXXX IDs out of a linked-record cell, whatever its shape.
+function extractLinkedIds(v) {
+  const ids = new Set();
+  const walk = (x) => {
+    if (x == null) return;
+    if (typeof x === "string") {
+      const m = x.match(/rec[A-Za-z0-9]{14}/g);
+      if (m) m.forEach(id => ids.add(id));
+      return;
+    }
+    if (Array.isArray(x)) { x.forEach(walk); return; }
+    if (typeof x === "object") {
+      if (typeof x.id === "string" && /^rec[A-Za-z0-9]{14}$/.test(x.id)) ids.add(x.id);
+      if (Array.isArray(x.linkedRecordIds)) x.linkedRecordIds.forEach(walk);
+      for (const k of Object.keys(x)) if (k !== "id") walk(x[k]);
+    }
+  };
+  walk(v);
+  return Array.from(ids);
+}
+
+const $ = (id) => document.getElementById(id);
+
+function setStatus(msg, kind) {
+  const s = $("status");
+  s.className = "status" + (kind ? " " + kind : "");
+  s.innerHTML = msg || "";
+}
+
+function escapeHtml(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function renderRichText(s) {
+  if (!s) return "<em>(empty)</em>";
+  let h = escapeHtml(s);
+  h = h.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+  h = h.replace(/&lt;(https?:[^&]+)&gt;/g, '<a href="$1" target="_blank" rel="noreferrer">$1</a>');
+  h = h.replace(/`([^`]+)`/g, "<code>$1</code>");
+  h = h.replace(/\\_/g, "_");
+  return h;
+}
+
+function extractRecordIdFromUrl(input) {
+  if (!input) return null;
+  const s = String(input).trim();
+  const direct = s.match(/(?:^|[\/?&=])(rec[A-Za-z0-9]{14})(?:[^A-Za-z0-9]|$)/);
+  if (direct) return direct[1];
+  let url;
+  try { url = new URL(s); } catch (_) { return null; }
+  const detail = url.searchParams.get("detail");
+  if (!detail) return null;
+  const tryDecode = (raw) => {
+    const variants = [raw, raw.replace(/-/g, "+").replace(/_/g, "/")];
+    for (let v of variants) {
+      while (v.length % 4) v += "=";
+      try {
+        const decoded = atob(v);
+        const m = decoded.match(/rec[A-Za-z0-9]{14}/);
+        if (m) return m[0];
+        try {
+          const obj = JSON.parse(decoded);
+          if (obj && typeof obj.rowId === "string" && /^rec[A-Za-z0-9]{14}$/.test(obj.rowId)) return obj.rowId;
+        } catch (_) {}
+      } catch (_) {}
+    }
+    return null;
+  };
+  return tryDecode(detail);
+}
+
+function normalizeMcpResponse(res) {
+  if (res == null) return null;
+  if (typeof res === "string") { try { return JSON.parse(res); } catch (_) { return res; } }
+  if (Array.isArray(res.content)) {
+    const text = res.content.find(c => c && c.type === "text" && typeof c.text === "string");
+    if (text) { try { return JSON.parse(text.text); } catch (_) { return text.text; } }
+  }
+  return res;
+}
+
+function truncate(s, max) {
+  if (s == null) return "";
+  s = String(s);
+  if (s.length <= max) return s;
+  return s.slice(0, max) + `\n…[truncated ${s.length - max} chars]`;
+}
+
+function stripTags(s) {
+  return String(s == null ? "" : s).replace(/<[^>]*>/g, " ").replace(/&[a-z]+;/gi, " ").replace(/\s+/g, " ").trim();
+}
+
+async function safeCall(name, args, label) {
+  try {
+    const raw = await window.cowork.callMcpTool(name, args);
+    const res = normalizeMcpResponse(raw);
+    console.log(`[build-dev-tool] ${label} ->`, res);
+    return { ok: true, data: res };
+  } catch (e) {
+    console.warn(`[build-dev-tool] ${label} failed:`, e);
+    return { ok: false, error: e && e.message ? e.message : String(e) };
+  }
+}
+
+// Try a sequence of arg shapes until one succeeds (some MCP wrappers rename params).
+async function safeCallVariants(name, argVariants, label) {
+  let last = { ok: false, error: "no variants" };
+  for (const args of argVariants) {
+    last = await safeCall(name, args, label);
+    if (last.ok && last.data != null) return last;
+  }
+  return last;
+}
+
+// ---------- Airtable fetch (child + parent) ----------
+
+async function fetchRecord(table, recordId) {
+  let raw;
+  try {
+    raw = await window.cowork.callMcpTool(T.airtableList, {
+      baseId: BASE_ID, tableId: table.id, recordIds: [recordId], fieldIds: table.fieldIds
+    });
+  } catch (e) {
+    console.log("[build-dev-tool] fetch from", table.name, "errored:", e);
+    return null;
+  }
+  const res = normalizeMcpResponse(raw);
+  const rec = res && res.records && res.records[0];
+  if (!rec) return null;
+  const cells = rec.cellValuesByFieldId || {};
+  const out = { id: rec.id, createdTime: rec.createdTime, sourceTableId: table.id, sourceTableName: table.name, _cells: cells };
+  for (const [fid, key] of Object.entries(table.fieldMap)) out[key] = extractValue(cells[fid]);
+  return out;
+}
+
+// Returns { ticket, parent } where parent may be null. ticket is whichever
+// record the URL points at; if that record is a sprint card with a parent link,
+// the parent backlog record is fetched too.
+async function fetchTicketBundle(recordId) {
+  let ticket = null;
+  for (const t of TABLES) {
+    ticket = await fetchRecord(t, recordId);
+    if (ticket) break;
+  }
+  if (!ticket) return null;
+
+  let parent = null;
+  const table = TABLES.find(t => t.id === ticket.sourceTableId);
+  if (table && !table.isParent && table.parentLinkFieldId) {
+    const parentIds = extractLinkedIds(ticket._cells[table.parentLinkFieldId]);
+    if (parentIds.length) {
+      parent = await fetchRecord(PARENT_TABLE, parentIds[0]);
+    }
+  }
+  delete ticket._cells;
+  if (parent) delete parent._cells;
+  return { ticket, parent };
+}
+
+// ---------- Link extraction & reading ----------
+
+function gatherTicketText(bundle) {
+  const t = bundle.ticket, p = bundle.parent;
+  return [
+    t.ideaName, t.descDesign, t.acceptanceCriteria, t.outcomeNotes, t.campaignName, t.asanaUrl,
+    p && p.ideaName, p && p.descDesign, p && p.campaignName, p && p.asanaUrl
+  ].filter(Boolean).join("\n");
+}
+
+function extractUrls(text) {
+  if (!text) return [];
+  const raw = String(text).match(/https?:\/\/[^\s<>"'\)\]]+/g) || [];
+  const cleaned = raw.map(u => u.replace(/[.,;:]+$/, ""));
+  return Array.from(new Set(cleaned));
+}
+
+function classifyUrl(u) {
+  const lc = u.toLowerCase();
+  if (lc.includes("atlassian.net/wiki") || lc.includes("confluence")) return "confluence";
+  if (lc.includes("docs.google.com") || lc.includes("drive.google.com") || lc.includes("sheets.google.com") || lc.includes("slides.google.com")) return "gdrive";
+  if (lc.includes("slack.com/archives") || /\.slack\.com\//.test(lc)) return "slack";
+  if (lc.includes("snowflake") || lc.includes("snowflakecomputing")) return "snowflake";
+  if (lc.includes("cordial")) return "cordial";
+  if (lc.includes("braze")) return "braze";
+  return "other";
+}
+
+function readConfluence(url) {
+  let pageId = null;
+  let m = url.match(/\/pages\/(\d+)/) || url.match(/pageId=(\d+)/);
+  if (m) pageId = m[1];
+  if (!pageId) {
+    return safeCall(T.gleanRead, { url }, "glean.read(confluence)").then(r => ({ ...r, via: "glean" }));
+  }
+  return safeCall(T.confluenceGet, { cloudId: ATLASSIAN_CLOUD_ID, pageId }, `confluence.getPage(${pageId})`);
+}
+
+function readGDrive(url) {
+  let fileId = null;
+  let m = url.match(/\/d\/([a-zA-Z0-9_-]{10,})/) || url.match(/[?&]id=([a-zA-Z0-9_-]{10,})/);
+  if (m) fileId = m[1];
+  if (!fileId) return safeCall(T.gleanRead, { url }, "glean.read(gdrive)");
+  return safeCallVariants(T.driveRead, [{ fileId }, { file_id: fileId }, { id: fileId }], `drive.read(${fileId})`)
+    .then(r => (r.ok && r.data != null) ? r : safeCall(T.gleanRead, { url }, "glean.read(gdrive-fallback)"));
+}
+
+function readSlack(url) {
+  const m = url.match(/archives\/([A-Z0-9]+)\/p(\d{10})(\d{6})/i);
+  if (!m) return safeCall(T.gleanRead, { url }, "glean.read(slack)");
+  const channel = m[1];
+  let ts = `${m[2]}.${m[3]}`;
+  try {
+    const u = new URL(url);
+    const threadTs = u.searchParams.get("thread_ts");
+    if (threadTs) ts = threadTs;
+  } catch (_) {}
+  return safeCallVariants(T.slackThread, [
+    { channel, thread_ts: ts },
+    { channel_id: channel, thread_ts: ts },
+    { channel, ts },
+  ], `slack.readThread(${channel})`);
+}
+
+function readBraze(url) {
+  const lc = url.toLowerCase();
+  const idm = url.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)
+    || url.match(/(?:campaign_id|canvas_id|id)=([0-9a-f-]{20,})/i);
+  const id = idm ? (idm[1] || idm[0]) : null;
+  if (!id) return Promise.resolve({ ok: false, error: "no Braze id in URL", skipped: true });
+  if (lc.includes("canvas")) return safeCallVariants(T.brazeCanvas, [{ canvas_id: id }, { id }], `braze.canvas(${id})`);
+  return safeCallVariants(T.brazeCampaign, [{ campaign_id: id }, { id }], `braze.campaign(${id})`);
+}
+
+function readCordial(url) {
+  // Cordial content-include keys are lowercase-dashed; grab the longest dashed
+  // segment from the URL path as a key candidate.
+  const segs = url.split(/[\/?&#=]/).filter(Boolean);
+  const keyCand = segs.filter(s => /^[a-z][a-z0-9]*(?:-[a-z0-9]+){1,}$/.test(s)).sort((a, b) => b.length - a.length)[0];
+  if (!keyCand) return Promise.resolve({ ok: false, error: "no content-include key in URL", skipped: true });
+  return safeCall(T.cordialInclude, { key: keyCand, fields: "key,name,description,htmlContent,plainContent,tags" }, `cordial.include(${keyCand})`);
+}
+
+// Cordial keys mentioned in plain ticket text (not as full URLs).
+function extractCordialKeys(text) {
+  if (!text) return [];
+  const matches = String(text).match(/\b[a-z][a-z0-9]+(?:-[a-z0-9]+){2,}\b/g) || [];
+  const filtered = matches.filter(m =>
+    !m.includes(".com") && !m.endsWith(".css") && !m.endsWith(".js") && !m.endsWith(".html") && !/^https?-/.test(m)
+  );
+  return Array.from(new Set(filtered)).slice(0, 6);
+}
+
+// Pull readable text out of whatever a reader returned.
+function extractReadableText(data) {
+  if (data == null) return "";
+  if (typeof data === "string") return stripTags(data);
+  // Confluence page
+  if (data.body) {
+    const b = data.body;
+    const v = (b.storage && b.storage.value) || (b.view && b.view.value) || (b.atlas_doc_format && b.atlas_doc_format.value) || "";
+    if (v) return stripTags(v);
+  }
+  // Slack thread
+  if (Array.isArray(data.messages)) {
+    return data.messages.map(m => (m.user ? m.user + ": " : "") + (m.text || "")).filter(Boolean).join("\n");
+  }
+  // Common content fields
+  for (const k of ["content", "plainContent", "htmlContent", "text", "value", "snippet", "description"]) {
+    if (typeof data[k] === "string" && data[k].trim()) return stripTags(data[k]);
+  }
+  // Glean read_document
+  if (data.document) {
+    const d = data.document;
+    const parts = [d.title, d.snippet, d.content, d.text].filter(t => typeof t === "string");
+    if (parts.length) return stripTags(parts.join("\n"));
+  }
+  // Fallback: stripped JSON
+  try { return stripTags(JSON.stringify(data)); } catch (_) { return ""; }
+}
+
+async function readAllLinks(urls) {
+  const capped = urls.slice(0, 12);
+  const tasks = capped.map(async (url) => {
+    const type = classifyUrl(url);
+    let r;
+    try {
+      if (type === "confluence") r = await readConfluence(url);
+      else if (type === "gdrive") r = await readGDrive(url);
+      else if (type === "slack") r = await readSlack(url);
+      else if (type === "braze") r = await readBraze(url);
+      else if (type === "cordial") r = await readCordial(url);
+      else if (type === "snowflake") r = { ok: false, error: "Snowflake worksheet URLs can't be auto-read; flag for manual review or supply SQL.", skipped: true };
+      else r = await safeCall(T.gleanRead, { url }, "glean.read(other)");
+    } catch (e) {
+      r = { ok: false, error: String(e) };
+    }
+    const text = r && r.ok ? truncate(extractReadableText(r.data), 3500) : "";
+    return { url, type, ok: !!(r && r.ok), skipped: !!(r && r.skipped), error: r && r.error, text };
+  });
+  return Promise.all(tasks);
+}
+
+// ---------- Supplementary research ----------
+
+async function gleanChat(brief) {
+  const message = `I'm about to BUILD a CRM email / data deliverable at Realtor.com (RDC) from the ticket below. Research what I need to build it correctly and reply with findings + source URLs. Cover: existing Cordial content includes / automation templates referenced, Braze campaigns/canvases, Snowflake tables & fields, supplements/data fields available, related prior builds, Confluence specs, and any constraints, naming conventions, or guardrails.\n\n${brief}`;
+  return safeCall(T.gleanChat, { message }, "glean.chat");
+}
+
+async function confluenceSearch(name) {
+  const titleTokens = (name || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/)
+    .filter(t => t.length >= 4 && !["email","module","test","with","from","this","that","using","update","logic","model","build"].includes(t))
+    .slice(0, 4);
+  if (!titleTokens.length) return { ok: true, data: { results: [] } };
+  const cql = `(${titleTokens.map(t => `text ~ "${t}"`).join(" AND ")}) AND type = page ORDER BY lastmodified DESC`;
+  return safeCall(T.confluenceCql, { cloudId: ATLASSIAN_CLOUD_ID, cql, limit: 8 }, "confluence.search");
+}
+
+async function cordialKeyLookups(keys) {
+  if (!keys.length) return [];
+  const tasks = keys.map(key =>
+    safeCall(T.cordialInclude, { key, fields: "key,name,description,htmlContent,plainContent,tags" }, `cordial.include(${key})`)
+      .then(r => ({ key, ...r }))
+  );
+  return (await Promise.all(tasks)).filter(r => r.ok && r.data);
+}
+
+function summarizeConfluenceResults(res) {
+  if (!res || !res.ok || !res.data) return "(no Confluence search results)";
+  const results = res.data.results || res.data.values || [];
+  if (!results.length) return "(no Confluence search results)";
+  return results.slice(0, 6).map(r => {
+    const title = r.title || (r.content && r.content.title) || "(untitled)";
+    const id = r.id || (r.content && r.content.id) || "";
+    const excerpt = r.excerpt || r.bodyTextHighlights || "";
+    const url = id ? `https://moveinc.atlassian.net/wiki/pages/${id}` : "";
+    return `- ${title}${url ? ` (${url})` : ""}\n  ${truncate(stripTags(excerpt), 220)}`;
+  }).join("\n");
+}
+
+function summarizeCordialKeys(items) {
+  if (!items || !items.length) return "(no Cordial content-includes matched in text)";
+  return items.map(it => {
+    const d = it.data || {};
+    const name = d.name || d.key || it.key;
+    const html = d.htmlContent || d.plainContent || "";
+    return `- ${it.key}${name && name !== it.key ? ` (${name})` : ""}: ${d.description ? truncate(d.description, 160) + " " : ""}${html ? "body: " + truncate(stripTags(html), 500) : ""}`;
+  }).join("\n");
+}
+
+function extractTextFromGleanResult(r) {
+  if (!r || !r.ok) return "(Glean unavailable)";
+  const d = r.data;
+  if (!d) return "(empty Glean response)";
+  if (typeof d === "string") return d;
+  if (d.messages && Array.isArray(d.messages)) {
+    const parts = [];
+    for (const m of d.messages) {
+      if (m.fragments && Array.isArray(m.fragments)) for (const f of m.fragments) { if (typeof f.text === "string") parts.push(f.text); }
+      else if (typeof m.text === "string") parts.push(m.text);
+    }
+    if (parts.length) return parts.join("\n");
+  }
+  if (typeof d.response === "string") return d.response;
+  if (typeof d.text === "string") return d.text;
+  return JSON.stringify(d).slice(0, 4000);
+}
+
+function summarizeLinkReads(linkReads) {
+  if (!linkReads || !linkReads.length) return "(no links found in the ticket)";
+  return linkReads.map(l => {
+    const head = `[${l.type.toUpperCase()}] ${l.url}`;
+    if (l.ok && l.text) return `${head}\n${l.text}`;
+    if (l.skipped) return `${head}\n(not auto-read: ${l.error || "skipped"})`;
+    return `${head}\n(could not read: ${l.error || "unknown error"})`;
+  }).join("\n\n");
+}
+
+function compileBrief(bundle, notes) {
+  const t = bundle.ticket, p = bundle.parent;
+  return [
+    t.ideaName && `# Ticket: ${t.ideaName}`,
+    t.phase && `Phase: ${t.phase}`,
+    (t.campaignName || (p && p.campaignName)) && `Campaign: ${t.campaignName || p.campaignName}`,
+    t.acceptanceCriteria && `\n## Acceptance Criteria / Asks (sprint card)\n${t.acceptanceCriteria}`,
+    t.descDesign && `\n## Description & Design\n${t.descDesign}`,
+    p && p.descDesign && `\n## Parent Backlog Description & Design\n${p.descDesign}`,
+    t.outcomeNotes && `\n## Prior Outcome & Recommendations\n${t.outcomeNotes}`,
+    notes && `\n## Builder's extra context\n${notes}`,
+  ].filter(Boolean).join("\n");
+}
+
+async function runResearch(bundle, notes, linkReads) {
+  const brief = compileBrief(bundle, notes);
+  const ticketText = gatherTicketText(bundle) + "\n" + (notes || "");
+  const cordialKeys = extractCordialKeys(ticketText);
+  const name = bundle.ticket.ideaName || (bundle.parent && bundle.parent.ideaName) || "";
+
+  const [glean, confluence, cordial] = await Promise.all([
+    gleanChat(brief),
+    confluenceSearch(name),
+    cordialKeyLookups(cordialKeys)
+  ]);
+
+  return {
+    cordialKeys,
+    bundle: {
+      linkReads: truncate(summarizeLinkReads(linkReads), 12000),
+      glean: truncate(extractTextFromGleanResult(glean), 5000),
+      confluence: truncate(summarizeConfluenceResults(confluence), 3000),
+      cordial: truncate(summarizeCordialKeys(cordial), 3000)
+    }
+  };
+}
+
+// ---------- Build generation ----------
+
+const SYSTEM_INSTRUCTIONS = `You are a senior CRM Ops / marketing-engineering developer at Realtor.com (RDC). Your job is to BUILD the deliverable that an Airtable ticket is requesting, then output the finished build plus how to implement it.
+
+You receive:
+- The ticket pulled from Airtable (a sprint card and/or its parent CRM Product Backlog ticket). "acceptanceCriteria" holds the sprint-card asks/DoD; "descriptionAndDesign" (child) and "parentDescriptionAndDesign" hold the full brief. Treat them together as the complete requirement.
+- "builderNotes" — extra steering from the developer (may be empty).
+- "linkReads" — the CONTENTS of every link found in the ticket that we were able to open: Google Docs/Drive, Confluence pages, Slack threads, Cordial content-includes, Braze campaigns/canvases, and any others. Each block is prefixed with [TYPE] and its URL. Snowflake worksheet links can't be auto-read and are flagged.
+- "research" — supplementary findings: Glean cross-source synthesis, Confluence search hits, and Cordial content-includes referenced by key.
+
+YOUR TASK: produce the actual build. Depending on what the ticket asks, this may include any of:
+- Cordial email modules / content includes — HTML + Smarty/Cordial templating (e.g. {{}}, {% %}, contact/supplement merge vars, content:includes).
+- Braze content — Liquid templating, Connected Content, email/HTML, canvas step logic.
+- Snowflake SQL — audience pulls, supplement feeds, validation queries (use RDC table/field names found in the brief or research; do not invent schemas).
+- Data feed / supplement specs, JSON payloads, config snippets, or whatever else the ticket needs.
+
+CRITICAL RULES:
+- DO NOT claim to have created, saved, or deployed anything inside the Cordial or Braze UI. You are producing code and instructions ONLY. The developer will paste/implement it themselves. Phrase the implementation guide as manual steps for them to perform.
+- Ground everything in the ticket + linkReads + research. When you rely on a fact (a module name, a field, a supplement, a Snowflake table, a content-include key), cite where it came from inline (e.g. "per Confluence spec '…'", "from the Google Doc brief", "Cordial include 'new-homes-waterfall-2-across'", "Slack thread").
+- Do NOT invent Cordial module names, Braze IDs, field names, or Snowflake tables that aren't in the inputs. If you must assume something because it wasn't provided, label it clearly as an ASSUMPTION and list it under Assumptions & Open Questions with who can confirm it.
+- Write production-quality, paste-ready code. Add brief inline comments where it helps the implementer.
+- If the ticket is ambiguous or missing something you truly need, build the most reasonable version, mark the gaps, and ask the specific question needed to finalize.
+
+OUTPUT: an HTML fragment for the build document. Output ONLY the fragment — no <html>/<head>/<body>, no markdown code fences around the whole thing, no commentary before or after.
+
+ADAPT THE FORMAT TO THE TICKET. Do not force a fixed template. Shape the document around whatever this specific build needs — add sections, drop sections, merge or reorder them, rename headings, and choose the depth that fits. A tiny one-query build should be short; a multi-module build can be long. Use your judgment. The only hard requirements are:
+- Lead with the <div class="output-meta"> header block (built date, inferred team, target platform(s), and the sources you actually read).
+- Include the actual build — every code artifact in its own <pre><code>…</code></pre> block, with a short note on what it is and where it goes. Use as many blocks as the build needs.
+- Surface any assumptions or open questions you had to make, with the owner who can confirm — but only if there are any. Omit this entirely when the build is fully grounded.
+
+Beyond those, the example sections below are just a menu to draw from, NOT a required skeleton — use, skip, rename, or replace them freely:
+- A short "What this builds" overview.
+- Interpreted requirements (with sources).
+- The build itself (the code blocks).
+- An implementation guide: manual steps the developer performs to put this live in Cordial / Braze / Snowflake — be explicit these are steps for THEM to do in the UI/tooling, since you have not made any changes. Include tracking-code / QA / analytics-brief steps where relevant.
+- Assumptions & open questions.
+
+Use <hr> between major sections, <h2>/<h3>/<h4> for headings, and the panels/blockquotes for callouts where they help.
+
+Allowed inline tags ONLY: <p>, <h2>, <h3>, <h4>, <hr>, <ul>, <ol>, <li>, <strong>, <em>, <code>, <a>, <blockquote>, <table>, <thead>, <tbody>, <tr>, <th>, <td>, <pre>, <br>, <div class="output-meta">, <div class="panel-info">, <div class="panel-success">, <div class="panel-error">. No inline styles, no scripts, no images. Inside <pre><code>, write raw code (it will be escaped for you—write it normally).
+
+Return only the HTML fragment.`;
+
+function sanitizeHtml(html) {
+  if (!html) return "";
+  return String(html)
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/\son\w+\s*=\s*"[^"]*"/gi, "")
+    .replace(/\son\w+\s*=\s*'[^']*'/gi, "")
+    .replace(/javascript:/gi, "");
+}
+
+// Wrap every <pre> in the rendered output with a Copy button.
+function addCopyButtons(container) {
+  container.querySelectorAll("pre").forEach(pre => {
+    if (pre.parentElement && pre.parentElement.classList.contains("code-wrap")) return;
+    const wrap = document.createElement("div");
+    wrap.className = "code-wrap";
+    pre.parentNode.insertBefore(wrap, pre);
+    wrap.appendChild(pre);
+    const btn = document.createElement("button");
+    btn.className = "copy-btn";
+    btn.textContent = "Copy";
+    btn.addEventListener("click", async () => {
+      const code = pre.innerText;
+      try {
+        await navigator.clipboard.writeText(code);
+      } catch (_) {
+        const ta = document.createElement("textarea");
+        ta.value = code; document.body.appendChild(ta); ta.select();
+        try { document.execCommand("copy"); } catch (e) {}
+        document.body.removeChild(ta);
+      }
+      btn.textContent = "Copied ✓"; btn.classList.add("copied");
+      setTimeout(() => { btn.textContent = "Copy"; btn.classList.remove("copied"); }, 1600);
+    });
+    wrap.appendChild(btn);
+  });
+}
+
+function ticketDisplayName(bundle) {
+  return bundle.ticket.ideaName || (bundle.parent && bundle.parent.ideaName) || bundle.ticket.parentLink || "(no name)";
+}
+
+function renderOutput(bundle, linkReads, html) {
+  const out = $("output");
+  const t = bundle.ticket, p = bundle.parent;
+  const ticketLink = `https://airtable.com/${BASE_ID}/${t.sourceTableId}/${t.id}`;
+
+  const created = t.createdDate || (t.createdTime || "").slice(0, 10);
+  const metaParts = [`Record <code>${escapeHtml(t.id)}</code>`];
+  if (t.sourceTableName) metaParts.push(`In ${escapeHtml(t.sourceTableName)}`);
+  if (created) metaParts.push(`Created ${escapeHtml(created)}`);
+  if (t.campaignName || (p && p.campaignName)) metaParts.push(`Campaign: ${escapeHtml(t.campaignName || p.campaignName)}`);
+  if (t.phase) metaParts.push(`Phase: ${escapeHtml(t.phase)}`);
+  if (t.status) metaParts.push(`Status: ${escapeHtml(t.status)}`);
+
+  const acBlock = t.acceptanceCriteria
+    ? `<details class="desc-design"><summary>Acceptance Criteria / Asks (sprint card)</summary><div class="body">${renderRichText(t.acceptanceCriteria)}</div></details>` : "";
+  const descBlock = t.descDesign
+    ? `<details class="desc-design"><summary>Description &amp; Design</summary><div class="body">${renderRichText(t.descDesign)}</div></details>` : "";
+  const parentBlock = (p && p.descDesign)
+    ? `<details class="desc-design"><summary>Parent Backlog — Description &amp; Design</summary><div class="body">${renderRichText(p.descDesign)}</div></details>` : "";
+
+  const readsList = (linkReads || []).map(l => {
+    const cls = l.ok ? "" : (l.skipped ? "(flagged)" : "(failed)");
+    return `<li><code>${l.type}</code> <a href="${escapeHtml(l.url)}" target="_blank" rel="noreferrer">${escapeHtml(truncate(l.url, 90))}</a> ${l.ok ? "✅" : "⚠️"} ${cls}</li>`;
+  }).join("");
+  const readsBlock = (linkReads && linkReads.length)
+    ? `<details class="desc-design"><summary>Linked sources read (${linkReads.length})</summary><div class="body"><ul style="white-space:normal">${readsList}</ul></div></details>` : "";
+
+  out.innerHTML = `
+    <div class="card">
+      <div class="ticket-card">
+        <div class="ticket-title">${escapeHtml(ticketDisplayName(bundle))}</div>
+        <div class="ticket-meta">
+          ${metaParts.join(" · ")} · <a href="${ticketLink}" target="_blank" rel="noreferrer">Open in Airtable</a>
+          ${p ? ` · Parent: <a href="https://airtable.com/${BASE_ID}/${p.sourceTableId}/${p.id}" target="_blank" rel="noreferrer">${escapeHtml(p.ideaName || p.id)}</a>` : ""}
+        </div>
+      </div>
+      ${acBlock}${descBlock}${parentBlock}${readsBlock}
+      <div class="output">${sanitizeHtml(html)}</div>
+      <div class="build-toolbar">
+        <button class="secondary" id="copyAllBtn">Copy all code</button>
+        <span class="status" id="copyAllStatus"></span>
+      </div>
+    </div>
+  `;
+  out.classList.remove("hidden");
+  const outputEl = out.querySelector(".output");
+  addCopyButtons(outputEl);
+
+  const copyAll = $("copyAllBtn");
+  if (copyAll) copyAll.addEventListener("click", async () => {
+    const blocks = Array.from(outputEl.querySelectorAll("pre")).map(pre => pre.innerText);
+    const all = blocks.join("\n\n/* ───────────── */\n\n");
+    try { await navigator.clipboard.writeText(all); } catch (_) {}
+    const st = $("copyAllStatus");
+    st.className = "status success"; st.textContent = `Copied ${blocks.length} code block(s).`;
+    setTimeout(() => { st.textContent = ""; }, 2200);
+  });
+}
+
+// ---------- Preview after Fetch ----------
+
+let lastBundle = null;
+let lastRecordId = "";
+let lastLinkReads = null;
+
+function chipClassForType(t) { return "chip t-" + t; }
+
+function renderTicketPreview(bundle, kind) {
+  const pv = $("ticketPreview");
+  pv.classList.remove("hidden", "error");
+  if (kind === "error") {
+    pv.classList.add("error");
+    pv.innerHTML = typeof bundle === "string" ? bundle : "Error loading ticket.";
+    return;
+  }
+  const t = bundle.ticket, p = bundle.parent;
+  const ticketLink = `https://airtable.com/${BASE_ID}/${t.sourceTableId}/${t.id}`;
+  const created = t.createdDate || (t.createdTime || "").slice(0, 10);
+  const parts = [`Record <code>${escapeHtml(t.id)}</code>`];
+  if (t.sourceTableName) parts.push(`In ${escapeHtml(t.sourceTableName)}`);
+  if (created) parts.push(`Created ${escapeHtml(created)}`);
+  if (t.campaignName) parts.push(`Campaign: ${escapeHtml(t.campaignName)}`);
+  if (t.phase) parts.push(`Phase: ${escapeHtml(t.phase)}`);
+  if (t.status) parts.push(`Status: ${escapeHtml(t.status)}`);
+  if (t.sprint) parts.push(`Sprint: ${escapeHtml(t.sprint)}`);
+
+  const parentBlock = p
+    ? `<div class="pv-parent"><div class="pv-parent-label">Parent backlog ticket</div>${escapeHtml(p.ideaName || p.id)} · <a href="https://airtable.com/${BASE_ID}/${p.sourceTableId}/${p.id}" target="_blank" rel="noreferrer">open</a></div>` : "";
+
+  const acHtml = t.acceptanceCriteria
+    ? `<details><summary>Acceptance Criteria / Asks</summary><div class="pv-body">${renderRichText(t.acceptanceCriteria)}</div></details>` : "";
+  const descHtml = t.descDesign
+    ? `<details><summary>Description &amp; Design</summary><div class="pv-body">${renderRichText(t.descDesign)}</div></details>` : "";
+  const pDescHtml = (p && p.descDesign)
+    ? `<details><summary>Parent — Description &amp; Design</summary><div class="pv-body">${renderRichText(p.descDesign)}</div></details>` : "";
+  const outcomeHtml = t.outcomeNotes
+    ? `<details><summary>Outcome &amp; Recommendations</summary><div class="pv-body">${renderRichText(t.outcomeNotes)}</div></details>` : "";
+
+  const urls = extractUrls(gatherTicketText(bundle));
+  const chips = urls.length
+    ? `<div class="links-found"><div class="lf-label">Links detected (${urls.length}) — read on Build It</div><div class="chips">${
+        urls.slice(0, 16).map(u => {
+          const type = classifyUrl(u);
+          return `<span class="${chipClassForType(type)}"><span class="chip-type">${type}</span><span class="chip-url">${escapeHtml(u.replace(/^https?:\/\//, ""))}</span></span>`;
+        }).join("")
+      }</div></div>`
+    : `<div class="links-found"><div class="lf-label">No links detected in this ticket</div></div>`;
+
+  pv.innerHTML = `
+    <div class="pv-title">${escapeHtml(ticketDisplayName(bundle))}</div>
+    <div class="pv-meta">${parts.join(" · ")} · <a href="${ticketLink}" target="_blank" rel="noreferrer">Open in Airtable</a></div>
+    ${parentBlock}${acHtml}${descHtml}${pDescHtml}${outcomeHtml}${chips}
+  `;
+}
+
+async function loadBundle(recordId) {
+  if (lastBundle && lastRecordId === recordId) return lastBundle;
+  const bundle = await fetchTicketBundle(recordId);
+  if (bundle) { lastBundle = bundle; lastRecordId = recordId; lastLinkReads = null; }
+  return bundle;
+}
+
+function parseRecordIdOrError(rawInput) {
+  if (!rawInput) return { error: "Paste an Airtable URL to look up the ticket." };
+  const recordId = extractRecordIdFromUrl(rawInput);
+  if (!recordId) return { error: "Couldn't find a record ID in that URL. Paste a link that includes <code>rec…</code> or a <code>?detail=</code> param with a rowId." };
+  return { recordId };
+}
+
+async function fetchOnly() {
+  const raw = $("ticketInput").value.trim();
+  const parsed = parseRecordIdOrError(raw);
+  if (parsed.error) { setStatus(parsed.error, "error"); return; }
+  const btn = $("fetchBtn");
+  btn.disabled = true;
+  $("ticketPreview").classList.add("hidden");
+  setStatus(`<span class="spinner"></span> Fetching <code>${escapeHtml(parsed.recordId)}</code> (+ parent) from Airtable…`);
+  try {
+    lastBundle = null; lastRecordId = "";
+    const bundle = await loadBundle(parsed.recordId);
+    if (!bundle) {
+      renderTicketPreview(`No record found for <code>${escapeHtml(parsed.recordId)}</code>. Check the URL or your access to the base.`, "error");
+      setStatus("", ""); return;
+    }
+    renderTicketPreview(bundle);
+    setStatus(`Fetched <code>${escapeHtml(bundle.ticket.id)}</code>${bundle.parent ? " + parent" : ""}. Add notes if needed, then Build It.`, "success");
+  } catch (e) {
+    console.error(e);
+    renderTicketPreview("Error: " + escapeHtml(e && e.message ? e.message : String(e)), "error");
+    setStatus("", "");
+  } finally { btn.disabled = false; }
+}
+
+async function run() {
+  const raw = $("ticketInput").value.trim();
+  const notes = $("notesInput").value.trim();
+  const parsed = parseRecordIdOrError(raw);
+  if (parsed.error) { setStatus(parsed.error, "error"); return; }
+
+  const btn = $("submitBtn");
+  btn.disabled = true;
+  $("output").classList.add("hidden");
+
+  try {
+    let bundle = lastBundle && lastRecordId === parsed.recordId ? lastBundle : null;
+    if (!bundle) {
+      setStatus(`<span class="spinner"></span> Fetching <code>${escapeHtml(parsed.recordId)}</code> (+ parent) from Airtable…`);
+      bundle = await loadBundle(parsed.recordId);
+      if (!bundle) {
+        setStatus(`No record found for <code>${escapeHtml(parsed.recordId)}</code>. Check the URL or your access.`, "error");
+        btn.disabled = false; return;
+      }
+      renderTicketPreview(bundle);
+    }
+
+    const urls = extractUrls(gatherTicketText(bundle));
+    setStatus(`<span class="spinner"></span> Reading ${urls.length} linked source(s): GDocs · Confluence · Slack · Cordial · Braze…`);
+    const linkReads = await readAllLinks(urls);
+    lastLinkReads = linkReads;
+
+    setStatus(`<span class="spinner"></span> Researching context: Glean · Confluence · Cordial…`);
+    const research = await runResearch(bundle, notes, linkReads);
+    console.log("[build-dev-tool] research bundle:", research);
+
+    setStatus(`<span class="spinner"></span> Building the deliverable from the ticket + sources…`);
+
+    const t = bundle.ticket, p = bundle.parent;
+    const claudePayload = {
+      ticketName: ticketDisplayName(bundle),
+      sourceTable: t.sourceTableName || "",
+      campaignName: t.campaignName || (p && p.campaignName) || null,
+      phase: t.phase || null,
+      status: t.status || null,
+      sprint: t.sprint || null,
+      acceptanceCriteria: t.acceptanceCriteria || "",
+      descriptionAndDesign: t.descDesign || "",
+      parentDescriptionAndDesign: (p && p.descDesign) || "",
+      priorOutcomeNotes: t.outcomeNotes || "",
+      builderNotes: notes || "(none provided)",
+      todayDate: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+      linkReads: research.bundle.linkReads,
+      research: {
+        cordialKeysSearched: research.cordialKeys,
+        gleanFindings: research.bundle.glean,
+        confluenceFindings: research.bundle.confluence,
+        cordialFindings: research.bundle.cordial
+      }
+    };
+
+    const result = await window.cowork.askClaude(
+      SYSTEM_INSTRUCTIONS + "\n\nReturn ONLY the HTML fragment for this build now.",
+      [claudePayload]
+    );
+    console.log("[build-dev-tool] askClaude raw result:", result);
+
+    let html;
+    if (typeof result === "string") html = result;
+    else if (result && typeof result === "object") {
+      html = result.response || result.content || result.text || result.data || "";
+      if (typeof html !== "string") html = JSON.stringify(html);
+    } else html = "";
+
+    html = html.replace(/^\s*```(?:html|HTML)?\s*\n?/, "").replace(/\n?```\s*$/, "").trim();
+    if (!html) throw new Error("Claude returned an empty response. Check the browser console for the raw result.");
+
+    renderOutput(bundle, linkReads, html);
+    setStatus(`Done. Built from ticket <code>${escapeHtml(t.id)}</code>${p ? " + parent" : ""} and ${linkReads.length} linked source(s).`, "success");
+  } catch (e) {
+    console.error(e);
+    const msg = escapeHtml(e && e.message ? e.message : String(e));
+    setStatus("Error: " + msg, "error");
+    const out = $("output");
+    out.classList.remove("hidden");
+    out.innerHTML = `
+      <div class="card">
+        <div class="ticket-preview error">
+          <strong>Could not generate the build.</strong><br>${msg}<br>
+          <small>Open DevTools console for the raw response (look for <code>[build-dev-tool]</code>).</small>
+        </div>
+      </div>`;
+  } finally { btn.disabled = false; }
+}
+
+$("submitBtn").addEventListener("click", run);
+$("fetchBtn").addEventListener("click", fetchOnly);
+$("clearBtn").addEventListener("click", () => {
+  $("ticketInput").value = "";
+  $("notesInput").value = "";
+  $("ticketPreview").classList.add("hidden"); $("ticketPreview").innerHTML = "";
+  $("output").classList.add("hidden"); $("output").innerHTML = "";
+  lastBundle = null; lastRecordId = ""; lastLinkReads = null;
+  setStatus("");
+});
+$("ticketInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); fetchOnly(); }
+});
+$("ticketInput").addEventListener("input", () => {
+  const newId = extractRecordIdFromUrl($("ticketInput").value.trim());
+  if (newId !== lastRecordId) {
+    lastBundle = null; lastRecordId = ""; lastLinkReads = null;
+    $("ticketPreview").classList.add("hidden");
+  }
+});
+
+// Persist last inputs locally
+try {
+  const saved = JSON.parse(localStorage.getItem("build-dev-tool") || "{}");
+  if (saved.ticket) $("ticketInput").value = saved.ticket;
+  if (saved.notes) $("notesInput").value = saved.notes;
+} catch (e) {}
+["ticketInput", "notesInput"].forEach(id => {
+  $(id).addEventListener("input", () => {
+    try {
+      localStorage.setItem("build-dev-tool", JSON.stringify({
+        ticket: $("ticketInput").value, notes: $("notesInput").value
+      }));
+    } catch (e) {}
+  });
+});
+</script>
+</body>
+</html>
