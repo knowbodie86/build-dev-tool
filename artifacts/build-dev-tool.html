@@ -470,6 +470,8 @@ const T = {
   snowflakeQuery: "mcp__3d182e2f-2058-4395-9892-67c01b9c141c__sql-query",
   cordialInclude: "mcp__0e93078a-ceed-431c-a2e7-06b309d38f74__get_content_include",
   cordialTemplate:"mcp__0e93078a-ceed-431c-a2e7-06b309d38f74__get_automation_template",
+  cordialSupplement: "mcp__0e93078a-ceed-431c-a2e7-06b309d38f74__get_supplement",
+  cordialSupplementRecords: "mcp__0e93078a-ceed-431c-a2e7-06b309d38f74__get_supplement_records",
   brazeCampaign:  "mcp__77a26f1d-addf-4234-bf82-419599e8504c__get_campaign_details",
   brazeCanvas:    "mcp__77a26f1d-addf-4234-bf82-419599e8504c__get_canvas_details"
 };
@@ -803,14 +805,39 @@ function readCordial(url) {
   return safeCall(T.cordialInclude, { key: keyCand, fields: "key,name,description,htmlContent,plainContent,tags" }, `cordial.include(${keyCand})`);
 }
 
-// Cordial keys mentioned in plain ticket text (not as full URLs).
-function extractCordialKeys(text) {
+// Cordial MCP tools wrap their payload as { result: "<json string>" }; unwrap it.
+function unwrapCordial(data) {
+  if (data == null) return null;
+  if (typeof data === "string") { try { return JSON.parse(data); } catch (_) { return data; } }
+  if (typeof data.result === "string") { try { return JSON.parse(data.result); } catch (_) { return data.result; } }
+  if (data.result && typeof data.result === "object") return data.result;
+  return data;
+}
+// Content-include keys referenced in the ticket/code: `content:KEY` plus bare dashed keys.
+function extractContentIncludeKeys(text) {
   if (!text) return [];
-  const matches = String(text).match(/\b[a-z][a-z0-9]+(?:-[a-z0-9]+){2,}\b/g) || [];
-  const filtered = matches.filter(m =>
-    !m.includes(".com") && !m.endsWith(".css") && !m.endsWith(".js") && !m.endsWith(".html") && !/^https?-/.test(m)
-  );
-  return Array.from(new Set(filtered)).slice(0, 6);
+  const out = new Set();
+  let m;
+  const re = /content:([a-z0-9][a-z0-9_-]*)/gi;
+  while ((m = re.exec(text))) out.add(m[1].toLowerCase());
+  (String(text).match(/\b[a-z][a-z0-9]+(?:-[a-z0-9]+){2,}\b/g) || []).forEach(k => {
+    if (!k.includes(".com") && !k.endsWith(".css") && !k.endsWith(".js") && !k.endsWith(".html") && !/^https?-/.test(k)) out.add(k.toLowerCase());
+  });
+  return Array.from(out).slice(0, 10);
+}
+// Supplement (data-table) keys referenced in the ticket/code, e.g.
+// getSupplementRecords('x'), .key = 'x', listingTable = 'x'. Snake_case only.
+function extractSupplementKeys(text) {
+  if (!text) return [];
+  const out = new Set();
+  const pats = [
+    /getSupplementRecords\(\s*['"]([a-z0-9_]+)['"]/gi,
+    /['"]?key['"]?\s*[:=]\s*['"]([a-z0-9_]+)['"]/gi,
+    /listingtable\s*[:=]\s*['"]([a-z0-9_]+)['"]/gi,
+    /supplement(?:table|key|name)?\s*[:=]\s*['"]([a-z0-9_]+)['"]/gi
+  ];
+  for (const re of pats) { let m; while ((m = re.exec(text))) out.add(m[1]); }
+  return Array.from(out).filter(k => /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/.test(k)).slice(0, 8);
 }
 
 // Pull readable text out of whatever a reader returned.
@@ -879,13 +906,70 @@ async function confluenceSearch(name) {
   return safeCall(T.confluenceCql, { cloudId: ATLASSIAN_CLOUD_ID, cql, limit: 8 }, "confluence.search");
 }
 
-async function cordialKeyLookups(keys) {
+// Fetch the FULL source of each referenced content include (e.g. the housing
+// template / sub-cards the module calls), so the build understands how the data
+// is consumed downstream.
+async function cordialContentIncludeLookups(keys) {
   if (!keys.length) return [];
   const tasks = keys.map(key =>
-    safeCall(T.cordialInclude, { key, fields: "key,name,description,htmlContent,plainContent,tags" }, `cordial.include(${key})`)
-      .then(r => ({ key, ...r }))
+    safeCall(T.cordialInclude, { key }, `cordial.include(${key})`).then(r => ({ key, ...r }))
   );
   return (await Promise.all(tasks)).filter(r => r.ok && r.data);
+}
+function summarizeContentIncludes(items) {
+  if (!items || !items.length) return "(no content includes referenced)";
+  return items.map(it => {
+    const d = unwrapCordial(it.data) || {};
+    let content = d.content || d.htmlContent || d.plainContent || "";
+    if (typeof content !== "string") content = JSON.stringify(content);
+    if (!content) return `### content:${it.key} — (no content / not found)`;
+    return `### content:${it.key}${d.name && d.name !== it.key ? ` (${d.name})` : ""}${d.lastUpdate ? ` [lastUpdate ${d.lastUpdate}]` : ""}\n${content}`;
+  }).join("\n\n");
+}
+// Verify each referenced supplement: config (indexes, freshness), row count, and
+// a sample to expose field names + fields that are always null.
+async function cordialSupplementChecks(keys) {
+  if (!keys.length) return [];
+  const tasks = keys.map(async key => {
+    const [cfgR, sampleR, countR] = await Promise.all([
+      safeCall(T.cordialSupplement, { key }, `supplement.cfg(${key})`),
+      safeCall(T.cordialSupplementRecords, { key, per_page: "3" }, `supplement.sample(${key})`),
+      safeCall(T.cordialSupplementRecords, { key, per_page: "1", return_count: true }, `supplement.count(${key})`)
+    ]);
+    return {
+      key,
+      cfg: cfgR.ok ? unwrapCordial(cfgR.data) : null,
+      sample: sampleR.ok ? unwrapCordial(sampleR.data) : null,
+      count: countR.ok ? unwrapCordial(countR.data) : null,
+      error: cfgR.ok ? null : cfgR.error
+    };
+  });
+  return Promise.all(tasks);
+}
+function summarizeSupplements(items) {
+  if (!items || !items.length) return "(no Cordial supplements referenced)";
+  const now = Date.now();
+  return items.map(it => {
+    if (!it.cfg || typeof it.cfg !== "object") return `- ${it.key}: NOT FOUND or unreadable${it.error ? ` (${it.error})` : ""}`;
+    const c = it.cfg;
+    const indexes = (c.indexes || []).map(i => i.field).join(", ");
+    const last = c.lastDataUpdate || c.lastUpdate || "";
+    let fresh = "";
+    if (last) {
+      const days = Math.floor((now - Date.parse(last)) / 86400000);
+      fresh = ` | lastDataUpdate ${last} (${days}d ago${days > 14 ? " — ⚠️ STALE" : ""})`;
+    }
+    const total = (it.count && it.count.total_count != null) ? it.count.total_count : "?";
+    const arr = Array.isArray(it.sample) ? it.sample : (it.sample && Array.isArray(it.sample.records) ? it.sample.records : []);
+    let fields = "", nulls = "";
+    if (arr.length) {
+      const first = arr[0].attributes || arr[0];
+      fields = Object.keys(first).join(", ");
+      const nullF = Object.keys(first).filter(k => arr.every(r => { const a = r.attributes || r; return a[k] == null || a[k] === ""; }));
+      if (nullF.length) nulls = ` | ⚠️ ALWAYS-NULL in sample: ${nullF.join(", ")}`;
+    }
+    return `- ${it.key}: name="${c.name || ""}" | index=[${indexes}] | rows=${total}${fresh} | fields: ${fields}${nulls}`;
+  }).join("\n");
 }
 
 function summarizeConfluenceResults(res) {
@@ -979,41 +1063,64 @@ async function snowflakeSchemaLookups(tableNames) {
         ? `${row[0]} (${row[1]})`
         : `${row.COLUMN_NAME || row.column_name} (${row.DATA_TYPE || row.data_type})`);
     }
-    return { name, cols };
+    // If it's a VIEW, pull its definition so the build sees the real logic
+    // (filters, joins, mislabeled columns). GET_DDL throws on a base table —
+    // safeCall swallows that and we just leave ddl null.
+    let ddl = null;
+    if (cols.length) {
+      const ddlR = await safeCall(T.snowflakeQuery, { sql: `SELECT GET_DDL('VIEW', '${name.replace(/'/g, "''")}') AS ddl;` }, `ddl ${name}`);
+      if (ddlR.ok) {
+        const ex = extractSqlRows(ddlR.data);
+        if (ex && ex.rows && ex.rows.length) {
+          const v = Array.isArray(ex.rows[0]) ? ex.rows[0][0] : (ex.rows[0].DDL || ex.rows[0].ddl);
+          if (v && !/does not exist|not a view/i.test(String(v))) ddl = String(v);
+        }
+      }
+    }
+    return { name, cols, ddl };
   });
-  return (await Promise.all(tasks)).filter(x => x.cols.length);
+  return (await Promise.all(tasks)).filter(x => x.cols.length || x.ddl);
 }
 function summarizeSchemas(items) {
   if (!items || !items.length) return "(no fully-qualified Snowflake tables detected in the ticket/links)";
-  return items.map(it => `- ${it.name} — REAL columns: ${it.cols.join(", ")}`).join("\n");
+  return items.map(it => {
+    let s = `- ${it.name} — REAL columns: ${it.cols.join(", ")}`;
+    if (it.ddl) s += `\n  VIEW DEFINITION (authoritative — read this for filter/label logic):\n${truncate(it.ddl, 6000)}`;
+    return s;
+  }).join("\n\n");
 }
 
 async function runResearch(bundle, notes, linkReads) {
   const brief = compileBrief(bundle, notes);
   const ticketText = gatherTicketText(bundle) + "\n" + (notes || "");
-  const cordialKeys = extractCordialKeys(ticketText);
   const name = bundle.ticket.ideaName || (bundle.parent && bundle.parent.ideaName) || "";
 
-  // Detect Snowflake tables across the brief AND the linked-doc contents.
-  const schemaSearchText = ticketText + "\n" + (linkReads || []).map(l => l.text || "").join("\n");
-  const fqTables = extractFqTableNames(schemaSearchText);
+  // Scan the brief, builder notes, AND the full text of every linked doc — so
+  // module code / supplement keys / table names referenced anywhere are found.
+  const corpus = ticketText + "\n" + (linkReads || []).map(l => l.text || "").join("\n");
+  const contentKeys = extractContentIncludeKeys(corpus);
+  const supplementKeys = extractSupplementKeys(corpus);
+  const fqTables = extractFqTableNames(corpus);
 
-  const [glean, confluence, cordial, schemas] = await Promise.all([
+  const [glean, confluence, contentIncludes, supplements, schemas] = await Promise.all([
     gleanChat(brief),
     confluenceSearch(name),
-    cordialKeyLookups(cordialKeys),
+    cordialContentIncludeLookups(contentKeys),
+    cordialSupplementChecks(supplementKeys),
     snowflakeSchemaLookups(fqTables)
   ]);
 
   return {
-    cordialKeys,
+    contentKeys,
+    supplementKeys,
     fqTables,
     bundle: {
       linkReads: summarizeLinkReads(linkReads),  // full text of every linked doc — no truncation
       glean: truncate(extractTextFromGleanResult(glean), 5000),
       confluence: truncate(summarizeConfluenceResults(confluence), 3000),
-      cordial: truncate(summarizeCordialKeys(cordial), 3000),
-      snowflakeSchemas: truncate(summarizeSchemas(schemas), 4000)
+      contentIncludes: summarizeContentIncludes(contentIncludes),  // full include source
+      supplements: summarizeSupplements(supplements),
+      snowflakeSchemas: summarizeSchemas(schemas)
     }
   };
 }
@@ -1026,7 +1133,12 @@ You receive:
 - The ticket pulled from Airtable (a sprint card and/or its parent CRM Product Backlog ticket). "acceptanceCriteria" holds the sprint-card asks/DoD; "descriptionAndDesign" (child) and "parentDescriptionAndDesign" hold the full brief. Treat them together as the complete requirement.
 - "builderNotes" — extra steering from the developer (may be empty).
 - "linkReads" — the CONTENTS of every link found in the ticket that we were able to open: Google Docs/Drive, Confluence pages, Slack threads, Cordial content-includes, Braze campaigns/canvases, and any others. Each block is prefixed with [TYPE] and its URL. Snowflake worksheet links can't be auto-read and are flagged.
-- "research" — supplementary findings: Glean cross-source synthesis, Confluence search hits, Cordial content-includes referenced by key, and "snowflakeSchemas" — the ACTUAL live columns (from INFORMATION_SCHEMA) of every fully-qualified Snowflake table named in the ticket or its linked docs.
+- "research" — findings gathered live before building. It contains:
+  - "contentIncludes" — the FULL source of every Cordial content include referenced (e.g. the housing template and sub-cards the module calls, like global-listing-search). Read these to understand how the data is actually consumed downstream — which fields a shared include reads, where the listing/record lookup happens, what CTAs/flags it keys off.
+  - "supplements" — for each Cordial supplement (data table) referenced: its config (name, index fields), total row count, lastDataUpdate freshness (flagged ⚠️ STALE if >14 days old), the sample field list, and any fields that are ALWAYS NULL in the sample. USE THIS: if a supplement the build depends on is stale, call it out; if a field the module reads is always null, flag it and don't rely on it.
+  - "snowflakeSchemas" — the ACTUAL live columns (from INFORMATION_SCHEMA) of every fully-qualified Snowflake table referenced, AND, when the object is a VIEW, its full VIEW DEFINITION. Treat the view definition as authoritative: read it to ground column names and to catch filter/label logic (e.g. an overloaded source_type label, a missing WHERE filter) before writing SQL or relying on a column's meaning.
+  - "gleanFindings" / "confluenceFindings" — cross-source synthesis and matching Confluence pages.
+  Ground the build in all of the above and cite which source each fact came from. When research reveals a problem with what the ticket asks for (stale feed, null field, a view that doesn't filter the way the brief assumes), surface it under Assumptions & Open Questions rather than silently building on the bad assumption.
 
 YOUR TASK: produce the actual build. Depending on what the ticket asks, this may include any of:
 - Cordial email modules / content includes — HTML + Smarty/Cordial templating (e.g. {{}}, {% %}, contact/supplement merge vars, content:includes).
@@ -1686,7 +1798,7 @@ async function run() {
     const linkReads = await readAllLinks(urls);
     lastLinkReads = linkReads;
 
-    setStatus(`<span class="spinner"></span> Researching context: Glean · Confluence · Cordial · Snowflake schema…`);
+    setStatus(`<span class="spinner"></span> Researching: Glean · Confluence · Cordial includes + supplements (config/freshness) · Snowflake schema + view DDL…`);
     const research = await runResearch(bundle, notes, linkReads);
     console.log("[build-dev-tool] research bundle:", research);
 
@@ -1708,12 +1820,14 @@ async function run() {
       todayDate: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
       linkReads: research.bundle.linkReads,
       research: {
-        cordialKeysSearched: research.cordialKeys,
+        contentIncludesFetched: research.contentKeys,
+        supplementsChecked: research.supplementKeys,
         snowflakeTablesDetected: research.fqTables,
         snowflakeSchemas: research.bundle.snowflakeSchemas,
+        contentIncludes: research.bundle.contentIncludes,
+        supplements: research.bundle.supplements,
         gleanFindings: research.bundle.glean,
-        confluenceFindings: research.bundle.confluence,
-        cordialFindings: research.bundle.cordial
+        confluenceFindings: research.bundle.confluence
       }
     };
 

@@ -1,6 +1,6 @@
 {
   "name": "build-dev-tool",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Build / Dev Tool for CRMOPS / Move Inc. Paste an Airtable ticket URL, automatically pull the sprint card AND its parent CRM Product Backlog ticket, read any links in the ticket (Google Docs/Drive, Confluence, Slack, Snowflake, Cordial, Braze), research supporting context across Glean / Confluence / Cordial, then BUILD the requested deliverable — Cordial Smarty/HTML modules, Braze Liquid, Snowflake SQL, configs — and display paste-ready code plus a manual implementation guide. Does not make changes in the Cordial or Braze UI; display only.",
   "author": {
     "name": "CRMOPS / Move Inc."

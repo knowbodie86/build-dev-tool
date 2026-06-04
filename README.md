@@ -13,7 +13,11 @@ A Cowork plugin that installs the Build / Dev Tool into your sidebar. Paste an A
    - **Braze** — `get_campaign_details` / `get_canvas_details` from an ID in the URL.
    - **Snowflake** — worksheet URLs can't be auto-read, so they are flagged for manual review.
    - **Other** — attempted via Glean `read_document`.
-3. **Research** — Glean chat (cross-source synthesis), Confluence CQL search on the ticket's distinctive title tokens, and Cordial content-include lookups for dashed identifiers in the brief.
+3. **Research** — runs in parallel before building:
+   - **Glean** cross-source synthesis + **Confluence** CQL search on the ticket's title tokens.
+   - **Cordial content includes** — follows every `content:` include referenced (in the brief, builder notes, or linked docs) and pulls its full source, so the build understands how the data is consumed downstream (housing template, sub-cards, which fields/flags they key off).
+   - **Cordial supplements** — for every supplement (data table) referenced, fetches config (index fields), total row count, `lastDataUpdate` freshness (flags ⚠️ STALE if >14 days old), and a sample to expose the field list and any always-null fields.
+   - **Snowflake schema + view DDL** — for every fully-qualified `db.schema.table`, pulls real columns and, when it's a VIEW, the full view definition (so the build can ground SQL and catch filter/label logic).
 4. **Snowflake schema pre-fetch** — before building, the tool detects any fully-qualified `db.schema.table` named in the ticket or its linked docs and pulls the table's real columns from `INFORMATION_SCHEMA.COLUMNS`, then hands those to the build step as authoritative — so generated SQL uses real column names instead of guesses.
 5. **Build** — feeds the ticket + link contents + research (including the live Snowflake schemas) to Claude with instructions to produce the actual deliverable (Cordial Smarty/HTML modules, Braze Liquid, Snowflake SQL, supplement specs, config), grounded in the inputs and cited to source. The report format **adapts to each ticket** — sections are added, dropped, reordered, or renamed as the build needs; only a meta header, the code blocks, and an assumptions/open-questions section (when relevant) are constant.
 6. **Display only (Cordial/Braze)** — the tool **never** makes changes in the Cordial or Braze UI. It renders code blocks with per-block Copy buttons and a Copy-all button, alongside a manual implementation guide of the steps the developer performs themselves.

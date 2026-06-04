@@ -11,7 +11,7 @@ description: >
   Braze), researches context across Glean/Confluence/Cordial, and builds the
   requested deliverable as paste-ready code plus an implementation guide.
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
 ---
 
 # Install Build / Dev Tool
@@ -26,7 +26,7 @@ Install the Build / Dev Tool artifact into the user's Cowork sidebar so they can
    - `id`: `"build-dev-tool"`
    - `html_path`: the absolute path you just read from (`${CLAUDE_PLUGIN_ROOT}/artifacts/build-dev-tool.html`)
    - `description`: `"Build / Dev Tool for CRMOPS. Paste an Airtable ticket URL — fetches the sprint card AND its parent CRM Product Backlog ticket, reads any links in the ticket (Google Docs/Drive, Confluence, Slack, Snowflake, Cordial, Braze), researches supporting context (Glean/Confluence/Cordial), then builds the requested deliverable (Cordial Smarty/HTML modules, Braze Liquid, Snowflake SQL, configs) and displays paste-ready code plus a manual implementation guide. Does NOT make changes in the Cordial or Braze UI — display only."`
-   - `mcp_tools`: the array of every MCP tool the artifact calls — Airtable `list_records_for_table`; Glean `chat` + `read_document`; Atlassian `getConfluencePage` + `searchConfluenceUsingCql` + `createConfluencePage`; Google Drive `read_file_content`; Slack `slack_read_thread`; Snowflake `sql-query`; Cordial `get_content_include` + `get_automation_template`; Braze `get_campaign_details` + `get_canvas_details`. Use the fully-qualified `mcp__<server>__<tool>` names as they appear in this Cowork session.
+   - `mcp_tools`: the array of every MCP tool the artifact calls — Airtable `list_records_for_table`; Glean `chat` + `read_document`; Atlassian `getConfluencePage` + `searchConfluenceUsingCql` + `createConfluencePage`; Google Drive `read_file_content`; Slack `slack_read_thread`; Snowflake `sql-query`; Cordial `get_content_include` + `get_automation_template` + `get_supplement` + `get_supplement_records`; Braze `get_campaign_details` + `get_canvas_details`. Use the fully-qualified `mcp__<server>__<tool>` names as they appear in this Cowork session.
 
 3. Confirm to the user that the tool has been installed and is now available in their sidebar. Mention the key connectors (Airtable, Atlassian, Glean, Google Drive, Slack, Snowflake, Cordial, Braze) and tell them to connect any that aren't already linked — any source whose connector isn't connected is simply skipped and flagged rather than breaking the build.
 
