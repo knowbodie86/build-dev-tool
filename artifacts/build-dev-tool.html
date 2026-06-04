@@ -325,11 +325,11 @@
   .output .panel-success { border-left-color: var(--teal); background: rgba(0,133,131,0.07); padding: 10px 16px; margin: 14px 0; border-radius: 0 4px 4px 0; border-left-width: 3px; border-left-style: solid; }
   .output .panel-error { border-left: 3px solid var(--red-600); background: rgba(217,34,40,0.06); padding: 10px 16px; margin: 14px 0; border-radius: 0 4px 4px 0; }
 
-  /* Code block + copy button wrapper (injected after render) */
+  /* Code block + action buttons (injected after render) */
   .code-wrap { position: relative; margin: 14px 0; }
   .code-wrap pre { margin: 0; }
-  .code-wrap .copy-btn {
-    position: absolute; top: 8px; right: 8px;
+  .code-actions { position: absolute; top: 8px; right: 8px; display: flex; gap: 6px; }
+  .code-actions button {
     background: rgba(255,255,255,0.12); color: #fff;
     border: 1px solid rgba(255,255,255,0.25);
     border-radius: 3px; padding: 3px 10px;
@@ -337,8 +337,24 @@
     letter-spacing: .06em; text-transform: uppercase; cursor: pointer;
     transition: background .12s;
   }
-  .code-wrap .copy-btn:hover { background: rgba(255,255,255,0.22); }
-  .code-wrap .copy-btn.copied { background: var(--teal); border-color: var(--teal); }
+  .code-actions button:hover:not(:disabled) { background: rgba(255,255,255,0.22); }
+  .code-actions button:disabled { opacity: .6; cursor: wait; }
+  .code-actions .copy-btn.copied { background: var(--teal); border-color: var(--teal); }
+  .code-actions .run-btn { background: #29B5E8; border-color: #1f9bd1; color: #06283b; }
+  .code-actions .run-btn:hover:not(:disabled) { background: #1f9bd1; }
+  .code-actions .verify-btn { background: rgba(0,133,131,0.85); border-color: var(--teal); color: #fff; }
+  .code-actions .verify-btn:hover:not(:disabled) { background: var(--teal); }
+  .sf-flag { margin-top: 10px; }
+  .sf-anyway { margin-top: 10px; }
+  /* Snowflake query results rendered under a SQL block */
+  .sf-results { margin-top: 10px; font-size: 12.5px; }
+  .sf-results:empty { display: none; }
+  .sf-results.error { color: var(--red-600); font-family: var(--mono); font-size: 12px; }
+  .sf-tablewrap { overflow: auto; max-height: 380px; border: 1px solid var(--gray-200); border-radius: 4px; }
+  .sf-tablewrap table { margin: 0; }
+  .sf-tablewrap thead th { position: sticky; top: 0; }
+  .sf-note { font-family: var(--mono); font-size: 11px; color: var(--gray-400); margin-top: 6px; }
+  .sf-msg { background: var(--gray-100); color: var(--gray-1200); }
 
   .ticket-card {
     background: var(--gray-100);
@@ -841,7 +857,7 @@ async function readAllLinks(urls) {
     } catch (e) {
       r = { ok: false, error: String(e) };
     }
-    const text = r && r.ok ? truncate(extractReadableText(r.data), 3500) : "";
+    const text = r && r.ok ? extractReadableText(r.data) : "";  // full text — no truncation
     return { url, type, ok: !!(r && r.ok), skipped: !!(r && r.skipped), error: r && r.error, text };
   });
   return Promise.all(tasks);
@@ -937,25 +953,67 @@ function compileBrief(bundle, notes) {
   ].filter(Boolean).join("\n");
 }
 
+// Find fully-qualified Snowflake table names (db.schema.table) mentioned anywhere
+// in the ticket / linked docs, so we can fetch their REAL columns before building.
+function extractFqTableNames(text) {
+  if (!text) return [];
+  const out = new Set();
+  const re = /\b[A-Za-z_][A-Za-z0-9_$]*\.[A-Za-z_][A-Za-z0-9_$]*\.[A-Za-z_][A-Za-z0-9_$]*\b/g;
+  let m;
+  while ((m = re.exec(text))) {
+    const v = m[0];
+    if (/^https?/i.test(v) || /\b(www|com|io|net|org|co|html|js|css|json)\b/i.test(v)) continue;
+    out.add(v);
+  }
+  return Array.from(out).slice(0, 8);
+}
+async function snowflakeSchemaLookups(tableNames) {
+  if (!tableNames.length) return [];
+  const tasks = tableNames.map(async name => {
+    const t = parseQualifiedName(name);
+    const r = await safeCall(T.snowflakeQuery, { sql: columnsQuery(t) }, `schema ${name}`);
+    let cols = [];
+    if (r.ok) {
+      const ex = extractSqlRows(r.data);
+      if (ex && ex.rows) cols = ex.rows.map(row => Array.isArray(row)
+        ? `${row[0]} (${row[1]})`
+        : `${row.COLUMN_NAME || row.column_name} (${row.DATA_TYPE || row.data_type})`);
+    }
+    return { name, cols };
+  });
+  return (await Promise.all(tasks)).filter(x => x.cols.length);
+}
+function summarizeSchemas(items) {
+  if (!items || !items.length) return "(no fully-qualified Snowflake tables detected in the ticket/links)";
+  return items.map(it => `- ${it.name} — REAL columns: ${it.cols.join(", ")}`).join("\n");
+}
+
 async function runResearch(bundle, notes, linkReads) {
   const brief = compileBrief(bundle, notes);
   const ticketText = gatherTicketText(bundle) + "\n" + (notes || "");
   const cordialKeys = extractCordialKeys(ticketText);
   const name = bundle.ticket.ideaName || (bundle.parent && bundle.parent.ideaName) || "";
 
-  const [glean, confluence, cordial] = await Promise.all([
+  // Detect Snowflake tables across the brief AND the linked-doc contents.
+  const schemaSearchText = ticketText + "\n" + (linkReads || []).map(l => l.text || "").join("\n");
+  const fqTables = extractFqTableNames(schemaSearchText);
+
+  const [glean, confluence, cordial, schemas] = await Promise.all([
     gleanChat(brief),
     confluenceSearch(name),
-    cordialKeyLookups(cordialKeys)
+    cordialKeyLookups(cordialKeys),
+    snowflakeSchemaLookups(fqTables)
   ]);
 
   return {
     cordialKeys,
+    fqTables,
     bundle: {
-      linkReads: truncate(summarizeLinkReads(linkReads), 12000),
+      linkReads: summarizeLinkReads(linkReads),  // full text of every linked doc — no truncation
       glean: truncate(extractTextFromGleanResult(glean), 5000),
       confluence: truncate(summarizeConfluenceResults(confluence), 3000),
-      cordial: truncate(summarizeCordialKeys(cordial), 3000)
+      cordial: truncate(summarizeCordialKeys(cordial), 3000),
+      snowflakeSchemas: truncate(summarizeSchemas(schemas), 4000)
     }
   };
 }
@@ -968,7 +1026,7 @@ You receive:
 - The ticket pulled from Airtable (a sprint card and/or its parent CRM Product Backlog ticket). "acceptanceCriteria" holds the sprint-card asks/DoD; "descriptionAndDesign" (child) and "parentDescriptionAndDesign" hold the full brief. Treat them together as the complete requirement.
 - "builderNotes" — extra steering from the developer (may be empty).
 - "linkReads" — the CONTENTS of every link found in the ticket that we were able to open: Google Docs/Drive, Confluence pages, Slack threads, Cordial content-includes, Braze campaigns/canvases, and any others. Each block is prefixed with [TYPE] and its URL. Snowflake worksheet links can't be auto-read and are flagged.
-- "research" — supplementary findings: Glean cross-source synthesis, Confluence search hits, and Cordial content-includes referenced by key.
+- "research" — supplementary findings: Glean cross-source synthesis, Confluence search hits, Cordial content-includes referenced by key, and "snowflakeSchemas" — the ACTUAL live columns (from INFORMATION_SCHEMA) of every fully-qualified Snowflake table named in the ticket or its linked docs.
 
 YOUR TASK: produce the actual build. Depending on what the ticket asks, this may include any of:
 - Cordial email modules / content includes — HTML + Smarty/Cordial templating (e.g. {{}}, {% %}, contact/supplement merge vars, content:includes).
@@ -1001,6 +1059,22 @@ Use <hr> between major sections, <h2>/<h3>/<h4> for headings, and the panels/blo
 
 Allowed inline tags ONLY: <p>, <h2>, <h3>, <h4>, <hr>, <ul>, <ol>, <li>, <strong>, <em>, <code>, <a>, <blockquote>, <table>, <thead>, <tbody>, <tr>, <th>, <td>, <pre>, <br>, <div class="output-meta">, <div class="panel-info">, <div class="panel-success">, <div class="panel-error">. No inline styles, no scripts, no images. Inside <pre><code>, write raw code (it will be escaped for you—write it normally).
 
+SNOWFLAKE SQL: For every Snowflake SQL block, add the attribute data-lang="sql" to its <pre> tag — e.g. <pre data-lang="sql"><code>SELECT … FROM …</code></pre>. This is what lets the tool show a "Run in Snowflake" button on that block. Put each independently-runnable SQL statement in its OWN <pre data-lang="sql"> block (don't combine several statements that the user would want to run separately), and write fully-qualified table names exactly as found in the brief/research so the query runs as-is.
+
+DO NOT INVENT COLUMN OR TABLE NAMES. Only use identifiers that appear in the brief, the linkReads, the research, or the RDC reference below.
+- research.snowflakeSchemas is AUTHORITATIVE: if a table you're querying appears there, use ONLY the exact column names listed for it (copy them verbatim, including underscores and case) — do not paraphrase, abbreviate, or guess variants. For example, never collapse FROM_MPR_ID/TO_MPR_ID to "MPRID", and never use "calculated_at" when the real column is "updated_at".
+- RDC's Snowflake warehouse does NOT use a Cordial-style "CONTACT_ID" column — never emit CONTACT_ID.
+- If you need a column for a table that is NOT in research.snowflakeSchemas and you cannot confirm it from the inputs, do ONE of: (a) use the canonical RDC field from the reference below, or (b) leave a clearly-labeled placeholder like /* TODO: confirm column */ and list it under Assumptions & Open Questions. When a query depends on columns you couldn't verify, also include a small verification query (e.g. SELECT column_name FROM <db>.INFORMATION_SCHEMA.COLUMNS WHERE table_name='…') the developer can run first.
+
+RDC SNOWFLAKE REFERENCE (canonical — prefer these over guesses):
+- Identity columns: user = adjusted_uu_id (canonical across tables); lead = submitted_lead_id or inquiry_lead_id; clickstream visit = visit_id; lead-to-allocation join = rdc_inquiry_guid. There is no generic CONTACT_ID.
+- High-level KPIs (UU, LSR, Leads, EFR): RDC_ANALYTICS.CRM_INSTRUMENT_PANEL.CRM_INSTRUMENT_PANEL_MAIN — always filter DATE_AGG ('daily'|'weekly'|'monthly'|'rolling'); use 'all' for PLATFORM/CHANNEL/VERTICAL totals; date field EVENT_DATE.
+- Lead/revenue/EFR: RDC_ANALYTICS.REVENUE.MARKETING_CONVERSION_DETAIL — date field event_date; flags is_delivered_lead / is_paid_lead / is_monetized_lead; revenue estimated_future_revenue.
+- Clickstream events: RDC_ANALYTICS.CLICKSTREAM.CLICKSTREAM_DETAIL — date field event_date_mst (Mountain Time).
+- New Homes (NHC) inventory dimensions live in RDC_CORE.DIMENSION: true SPEC (move-in-ready) homes = dim_new_homes_spec_listing_current (key property_id); plans = dim_new_homes_plan_current (plan_id); subdivisions/communities = dim_new_homes_subdivision_current (subdivision_id). To restrict a build to SPEC homes only, confirm/join the property's MPR id against dim_new_homes_spec_listing_current.
+- DO NOT use a "source_type"/source label equal to 'spec' as a spec filter. In the export view rdc_marketing.exports.cordial_similar_homes_for_sale_nhc, the snowflake_source_to_mpr_id column tags THREE tables as 'spec' (the real spec dim AND general MLS listings dim_listing_current AND rentals dim_rentals_community_current), so 'spec' there also matches non-spec listings — only ~4-5% of rows labeled 'spec' are truly spec. Filtering NOT IN ('plan','subdivision') does NOT yield spec-only. A real spec filter must join to dim_new_homes_spec_listing_current.
+- Always filter on the date column first (these tables are billions of rows). If the right table/column isn't in the inputs or this reference, say so and flag it rather than guessing.
+
 Return only the HTML fragment.`;
 
 function sanitizeHtml(html) {
@@ -1013,7 +1087,257 @@ function sanitizeHtml(html) {
     .replace(/javascript:/gi, "");
 }
 
-// Wrap every <pre> in the rendered output with a Copy button.
+// ---------- Snowflake: run a SQL block from the report ----------
+
+function isLikelySql(code) {
+  const c = (code || "").trim();
+  if (!/^(WITH|SELECT|INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|TRUNCATE|SHOW|DESCRIBE|DESC|EXPLAIN|USE|GRANT|COPY|CALL)\b/i.test(c)) return false;
+  return /\b(FROM|INTO|TABLE|VALUES|WAREHOUSE|DATABASE|SCHEMA|JOIN|WHERE)\b/i.test(c);
+}
+function isReadOnlySql(code) {
+  return /^\s*(WITH|SELECT|SHOW|DESCRIBE|DESC|EXPLAIN|USE)\b/i.test(code || "");
+}
+function sqlCellText(v) {
+  if (v == null) return "";
+  if (typeof v === "object") { try { return JSON.stringify(v); } catch (_) { return String(v); } }
+  return String(v);
+}
+// Normalize any sql-query response into { rows, columns }. The Snowflake MCP
+// returns { result_set: { data: [[...]], resultSetMetaData: { rowType:[{name}] } } }.
+function extractSqlRows(res) {
+  if (res == null) return null;
+  if (res.result_set && Array.isArray(res.result_set.data)) {
+    const meta = res.result_set.resultSetMetaData;
+    const cols = meta && Array.isArray(meta.rowType) ? meta.rowType.map(c => c.name) : null;
+    return { rows: res.result_set.data, columns: cols };
+  }
+  if (Array.isArray(res)) return { rows: res, columns: null };
+  if (Array.isArray(res.rows)) return { rows: res.rows, columns: res.columns || res.fields || res.schema };
+  if (Array.isArray(res.data)) return { rows: res.data, columns: res.columns || res.fields };
+  if (Array.isArray(res.results)) return { rows: res.results, columns: res.columns || res.fields };
+  return null;
+}
+function renderSqlResult(res) {
+  if (res == null) return '<em>(no result returned)</em>';
+  const extracted = extractSqlRows(res);
+  let rows = extracted ? extracted.rows : null;
+  let columns = extracted ? extracted.columns : null;
+  if (rows) {
+    if (!rows.length) return '<div class="sf-note">Query succeeded — 0 rows returned.</div>';
+    let cols, body;
+    if (Array.isArray(rows[0])) {
+      cols = (columns || rows[0].map((_, i) => "col" + (i + 1)));
+      cols = cols.map(c => (c && typeof c === "object") ? (c.name || c.label || JSON.stringify(c)) : String(c));
+      body = rows;
+    } else if (typeof rows[0] === "object") {
+      cols = columns ? columns.map(c => (c && typeof c === "object") ? (c.name || c.label || String(c)) : String(c)) : Object.keys(rows[0]);
+      body = rows.map(r => cols.map(c => r[c]));
+    } else {
+      cols = ["value"]; body = rows.map(r => [r]);
+    }
+    const MAX = 200;
+    const shown = body.slice(0, MAX);
+    const thead = "<tr>" + cols.map(c => `<th>${escapeHtml(c)}</th>`).join("") + "</tr>";
+    const trs = shown.map(r => "<tr>" + (Array.isArray(r) ? r : [r]).map(c => `<td>${escapeHtml(sqlCellText(c))}</td>`).join("") + "</tr>").join("");
+    const note = body.length > MAX
+      ? `<div class="sf-note">Showing first ${MAX} of ${body.length} rows.</div>`
+      : `<div class="sf-note">${body.length} row(s).</div>`;
+    return `<div class="sf-tablewrap"><table><thead>${thead}</thead><tbody>${trs}</tbody></table></div>${note}`;
+  }
+  if (typeof res === "string") return `<pre class="sf-msg">${escapeHtml(res)}</pre>`;
+  if (res.message || res.status) return `<div class="sf-note">${escapeHtml(res.message || res.status)}</div>`;
+  return `<pre class="sf-msg">${escapeHtml(truncate(JSON.stringify(res, null, 2), 4000))}</pre>`;
+}
+async function runSnowflakeBlock(sql, btn, resultsEl, opts) {
+  opts = opts || {};
+  const orig = btn.textContent;
+
+  // Pre-flight column check: refuse to run if the query references a column that
+  // doesn't exist on its table(s). Skipped when the user clicks "Run anyway".
+  if (!opts.skipVerify) {
+    btn.disabled = true; btn.textContent = "Checking…";
+    resultsEl.className = "sf-results";
+    resultsEl.innerHTML = '<span class="spinner"></span> Verifying columns before running…';
+    let tableCols = [];
+    try { tableCols = await lookupTableCols(sql); } catch (e) { tableCols = []; }
+    const { known, unmatched } = computeUnmatched(sql, tableCols);
+    btn.disabled = false; btn.textContent = orig;
+    if (known.size && unmatched.length) {
+      resultsEl.className = "sf-results";
+      resultsEl.innerHTML =
+        `<div class="panel-error sf-flag"><strong>⛔ Not run — the query references identifiers that aren't real columns:</strong> ${unmatched.map(u => `<code>${escapeHtml(u)}</code>`).join(", ")}.<br><span class="sf-note">Fix the build (or edit the SQL) so it uses the real column names below, then Run again. If one of these is actually a CTE/alias the checker mis-flagged, use “Run anyway”.</span></div>`
+        + renderColumnTables(tableCols);
+      const anyway = document.createElement("button");
+      anyway.className = "run-btn sf-anyway";
+      anyway.textContent = "Run anyway";
+      anyway.addEventListener("click", () => runSnowflakeBlock(sql, btn, resultsEl, { skipVerify: true }));
+      resultsEl.appendChild(anyway);
+      return;
+    }
+  }
+
+  if (!isReadOnlySql(sql)) {
+    const ok = window.confirm("This statement isn't a read-only SELECT — it may modify data or schema in Snowflake. Run it anyway?");
+    if (!ok) return;
+  }
+  btn.disabled = true; btn.textContent = "Running…";
+  resultsEl.className = "sf-results";
+  resultsEl.innerHTML = '<span class="spinner"></span> Querying Snowflake…';
+  try {
+    const raw = await window.cowork.callMcpTool(T.snowflakeQuery, { sql });
+    console.log("[build-dev-tool] sql-query raw:", raw);
+    const res = normalizeMcpResponse(raw);
+    resultsEl.className = "sf-results";
+    resultsEl.innerHTML = renderSqlResult(res);
+  } catch (e) {
+    console.error(e);
+    resultsEl.className = "sf-results error";
+    resultsEl.innerHTML = "Error: " + escapeHtml(e && e.message ? e.message : String(e));
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
+// ---------- Snowflake: verify the columns a SQL block references ----------
+
+const SQL_KEYWORDS = new Set(["select","from","where","and","or","not","as","on","join","inner","left","right","full","outer","cross","lateral","group","by","order","having","limit","offset","top","with","union","all","distinct","case","when","then","else","end","is","null","in","like","ilike","rlike","between","asc","desc","over","partition","qualify","interval","day","days","week","weeks","month","months","year","years","hour","hours","minute","minutes","second","seconds","true","false","exists","values","insert","update","delete","into","set","create","table","view","using","current_date","current_timestamp","current_time","sysdate"]);
+
+function extractTableRefs(sql) {
+  const refs = [];
+  const re = /\b(?:FROM|JOIN)\s+("[^"]+"(?:\."[^"]+"){1,2}|[A-Za-z_][\w$]*(?:\.[A-Za-z_][\w$]*){1,2})/gi;
+  let m;
+  while ((m = re.exec(sql))) refs.push(m[1]);
+  return Array.from(new Set(refs));
+}
+function parseQualifiedName(name) {
+  const parts = name.match(/"[^"]+"|[^.]+/g) || [];
+  const norm = parts.map(p => p.startsWith('"') ? p.slice(1, -1) : p.toUpperCase());
+  if (norm.length === 3) return { db: norm[0], schema: norm[1], table: norm[2], raw: name };
+  if (norm.length === 2) return { db: null, schema: norm[0], table: norm[1], raw: name };
+  return { db: null, schema: null, table: norm[0], raw: name };
+}
+function columnsQuery(t) {
+  const info = t.db ? `${t.db}.information_schema.columns` : `information_schema.columns`;
+  const esc = s => s.replace(/'/g, "''");
+  const where = [`table_name = '${esc(t.table)}'`];
+  if (t.schema) where.push(`table_schema = '${esc(t.schema)}'`);
+  return `SELECT column_name, data_type FROM ${info} WHERE ${where.join(" AND ")} ORDER BY ordinal_position;`;
+}
+// Column-like identifiers the SQL references (best-effort; skips functions,
+// aliases, CTE names, keywords, and the table/schema/db name parts).
+function referencedIdentifiers(sql, excludeSet) {
+  let s = sql.replace(/'[^']*'/g, "''").replace(/"[^"]*"/g, " ");
+  // CTE / derived-table names: "<name> AS ("
+  const cte = new Set(); let cm;
+  const cteRe = /\b([A-Za-z_]\w*)\s+AS\s*\(/gi;
+  while ((cm = cteRe.exec(s))) cte.add(cm[1].toUpperCase());
+  // Column/table aliases: "… AS <name>". Collect them as a SET so the alias is
+  // ignored everywhere it's reused (e.g. ORDER BY / GROUP BY / HAVING), not just
+  // at its definition.
+  const alias = new Set(); let am;
+  const aliasRe = /\bAS\s+([A-Za-z_]\w*)/gi;
+  while ((am = aliasRe.exec(s))) alias.add(am[1].toUpperCase());
+  // Implicit aliases after a closing paren, e.g. "COUNT(*) c" or "(SELECT …) sub".
+  const implRe = /\)\s+([A-Za-z_]\w*)/g; let im;
+  while ((im = implRe.exec(s))) alias.add(im[1].toUpperCase());
+  const out = new Set(); let tm;
+  const tokRe = /[A-Za-z_]\w*/g;
+  while ((tm = tokRe.exec(s))) {
+    const tok = tm[0], up = tok.toUpperCase(), lower = tok.toLowerCase();
+    const after = s.slice(tm.index + tok.length).match(/^\s*(.)/);
+    const nc = after ? after[1] : "";
+    const prev = s.slice(0, tm.index);
+    if (nc === "(") continue;                 // function call
+    if (nc === ".") continue;                 // table/alias qualifier
+    if (/\bAS\s+$/i.test(prev)) continue;      // alias right after AS
+    if (SQL_KEYWORDS.has(lower)) continue;
+    if (cte.has(up)) continue;                 // CTE / derived-table name
+    if (alias.has(up)) continue;               // any AS-defined alias, anywhere
+    if (excludeSet && excludeSet.has(up)) continue;  // db/schema/table parts
+    out.add(tok);
+  }
+  return out;
+}
+// Fetch the real columns for every fully-qualified table referenced in the SQL.
+async function lookupTableCols(sql) {
+  const refs = extractTableRefs(sql).map(parseQualifiedName);
+  const tableCols = [];
+  for (const t of refs) {
+    const r = await safeCall(T.snowflakeQuery, { sql: columnsQuery(t) }, `verify ${t.raw}`);
+    let cols = [];
+    if (r.ok) {
+      const ex = extractSqlRows(r.data);
+      if (ex && ex.rows) cols = ex.rows.map(row => Array.isArray(row)
+        ? { name: row[0], type: row[1] }
+        : { name: row.COLUMN_NAME || row.column_name, type: row.DATA_TYPE || row.data_type });
+    }
+    tableCols.push({ t, cols, error: r.ok ? null : r.error });
+  }
+  return tableCols;
+}
+// Given fetched columns, return which referenced identifiers don't exist.
+function computeUnmatched(sql, tableCols) {
+  const known = new Set();
+  const exclude = new Set();
+  tableCols.forEach(tc => {
+    tc.cols.forEach(c => known.add(String(c.name).toUpperCase()));
+    ["db", "schema", "table"].forEach(k => { if (tc.t[k]) exclude.add(String(tc.t[k]).toUpperCase()); });
+  });
+  if (!known.size) return { known, unmatched: [] };
+  const unmatched = Array.from(referencedIdentifiers(sql, exclude)).filter(t => !known.has(t.toUpperCase()));
+  return { known, unmatched };
+}
+function renderColumnTables(tableCols) {
+  let html = "";
+  tableCols.forEach(tc => {
+    const fq = [tc.t.db, tc.t.schema, tc.t.table].filter(Boolean).join(".");
+    if (tc.error) { html += `<div class="sf-note">⚠️ <strong>${escapeHtml(fq)}</strong> — couldn't read columns: ${escapeHtml(tc.error)}</div>`; return; }
+    if (!tc.cols.length) { html += `<div class="sf-note">⚠️ <strong>${escapeHtml(fq)}</strong> — no columns found (check the name, schema, or your access).</div>`; return; }
+    const rows = tc.cols.map(c => `<tr><td><code>${escapeHtml(c.name)}</code></td><td>${escapeHtml(c.type || "")}</td></tr>`).join("");
+    html += `<div class="sf-note">Columns in <strong>${escapeHtml(fq)}</strong> (${tc.cols.length}):</div>`
+         +  `<div class="sf-tablewrap"><table><thead><tr><th>Column</th><th>Type</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  });
+  return html;
+}
+function renderColumnVerification(sql, tableCols, opts) {
+  const showFlag = !opts || opts.showFlag !== false;
+  let html = renderColumnTables(tableCols);
+  if (showFlag) {
+    const { known, unmatched } = computeUnmatched(sql, tableCols);
+    if (known.size) {
+      if (unmatched.length) {
+        html += `<div class="panel-error sf-flag"><strong>⚠️ Identifiers in your query not found as columns above:</strong> ${unmatched.map(u => `<code>${escapeHtml(u)}</code>`).join(", ")}<br><span class="sf-note">These may be CTE names, table aliases, or expression labels — but if one is meant to be a real column, it's wrong/misspelled (this is what causes "invalid identifier").</span></div>`;
+      } else {
+        html += `<div class="panel-success sf-flag">✅ Every column-like identifier in the query matches a real column above.</div>`;
+      }
+    }
+  }
+  return html || '<div class="sf-note">Nothing to verify.</div>';
+}
+async function verifyColumnsBlock(sql, btn, resultsEl) {
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = "Checking…";
+  resultsEl.className = "sf-results";
+  resultsEl.innerHTML = '<span class="spinner"></span> Looking up real columns…';
+  try {
+    const refs = extractTableRefs(sql);
+    if (!refs.length) {
+      resultsEl.innerHTML = '<div class="sf-note">No fully-qualified table (db.schema.table) found in this query to verify.</div>';
+      return;
+    }
+    const tableCols = await lookupTableCols(sql);
+    resultsEl.className = "sf-results";
+    resultsEl.innerHTML = renderColumnVerification(sql, tableCols);
+  } catch (e) {
+    console.error(e);
+    resultsEl.className = "sf-results error";
+    resultsEl.innerHTML = "Error: " + escapeHtml(e && e.message ? e.message : String(e));
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
+// Wrap every <pre> in the rendered output with Copy (+ Run / Verify for SQL).
 function addCopyButtons(container) {
   container.querySelectorAll("pre").forEach(pre => {
     if (pre.parentElement && pre.parentElement.classList.contains("code-wrap")) return;
@@ -1021,23 +1345,51 @@ function addCopyButtons(container) {
     wrap.className = "code-wrap";
     pre.parentNode.insertBefore(wrap, pre);
     wrap.appendChild(pre);
-    const btn = document.createElement("button");
-    btn.className = "copy-btn";
-    btn.textContent = "Copy";
-    btn.addEventListener("click", async () => {
-      const code = pre.innerText;
-      try {
-        await navigator.clipboard.writeText(code);
-      } catch (_) {
+
+    const actions = document.createElement("div");
+    actions.className = "code-actions";
+
+    const code = pre.innerText;
+    const codeEl = pre.querySelector("code");
+    const lang = ((pre.dataset && pre.dataset.lang) || (codeEl && codeEl.dataset && codeEl.dataset.lang) || "").toLowerCase();
+    const isSql = lang === "sql" || (!lang && isLikelySql(code));
+
+    let resultsEl = null;
+    if (isSql) {
+      resultsEl = document.createElement("div");
+      resultsEl.className = "sf-results";
+      const runBtn = document.createElement("button");
+      runBtn.className = "run-btn";
+      runBtn.textContent = "▶ Run in Snowflake";
+      runBtn.addEventListener("click", () => runSnowflakeBlock(pre.innerText, runBtn, resultsEl));
+      actions.appendChild(runBtn);
+
+      const verifyBtn = document.createElement("button");
+      verifyBtn.className = "verify-btn";
+      verifyBtn.textContent = "✓ Verify columns";
+      verifyBtn.addEventListener("click", () => verifyColumnsBlock(pre.innerText, verifyBtn, resultsEl));
+      actions.appendChild(verifyBtn);
+    }
+
+    const copyBtn = document.createElement("button");
+    copyBtn.className = "copy-btn";
+    copyBtn.textContent = "Copy";
+    copyBtn.addEventListener("click", async () => {
+      const c = pre.innerText;
+      try { await navigator.clipboard.writeText(c); }
+      catch (_) {
         const ta = document.createElement("textarea");
-        ta.value = code; document.body.appendChild(ta); ta.select();
+        ta.value = c; document.body.appendChild(ta); ta.select();
         try { document.execCommand("copy"); } catch (e) {}
         document.body.removeChild(ta);
       }
-      btn.textContent = "Copied ✓"; btn.classList.add("copied");
-      setTimeout(() => { btn.textContent = "Copy"; btn.classList.remove("copied"); }, 1600);
+      copyBtn.textContent = "Copied ✓"; copyBtn.classList.add("copied");
+      setTimeout(() => { copyBtn.textContent = "Copy"; copyBtn.classList.remove("copied"); }, 1600);
     });
-    wrap.appendChild(btn);
+    actions.appendChild(copyBtn);
+
+    wrap.appendChild(actions);
+    if (resultsEl) wrap.appendChild(resultsEl);
   });
 }
 
@@ -1334,7 +1686,7 @@ async function run() {
     const linkReads = await readAllLinks(urls);
     lastLinkReads = linkReads;
 
-    setStatus(`<span class="spinner"></span> Researching context: Glean · Confluence · Cordial…`);
+    setStatus(`<span class="spinner"></span> Researching context: Glean · Confluence · Cordial · Snowflake schema…`);
     const research = await runResearch(bundle, notes, linkReads);
     console.log("[build-dev-tool] research bundle:", research);
 
@@ -1357,6 +1709,8 @@ async function run() {
       linkReads: research.bundle.linkReads,
       research: {
         cordialKeysSearched: research.cordialKeys,
+        snowflakeTablesDetected: research.fqTables,
+        snowflakeSchemas: research.bundle.snowflakeSchemas,
         gleanFindings: research.bundle.glean,
         confluenceFindings: research.bundle.confluence,
         cordialFindings: research.bundle.cordial

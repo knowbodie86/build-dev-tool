@@ -11,7 +11,7 @@ description: >
   Braze), researches context across Glean/Confluence/Cordial, and builds the
   requested deliverable as paste-ready code plus an implementation guide.
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # Install Build / Dev Tool
@@ -45,5 +45,7 @@ The installed artifact is a self-contained build generator with the following ca
 - **Supplementary research** — runs Glean chat (cross-source synthesis), a Confluence CQL search on the ticket's distinctive title tokens, and Cordial content-include lookups for dashed identifiers found in the brief.
 - **Build generation** — feeds the ticket, the link contents, and the research bundle to Claude with instructions to produce the actual deliverable: Cordial Smarty/HTML modules, Braze Liquid, Snowflake SQL, supplement specs, or config — grounded in the inputs and cited to source. The output format adapts to each ticket (sections are added, dropped, reordered, or renamed as needed); only a meta header, the code blocks, and an assumptions/open-questions section (when relevant) are constant.
 - **Display only (Cordial/Braze)** — the tool never makes changes in the Cordial or Braze UI. It renders paste-ready code blocks with per-block Copy buttons and a Copy-all button, plus a manual implementation guide describing the steps the developer performs themselves.
+- **Run in Snowflake** — SQL code blocks (tagged `data-lang="sql"`) get a "Run in Snowflake" button that executes the query via the Snowflake `sql-query` tool and renders the result set as a table inline under the block. It runs a column pre-flight check first and **blocks execution** (with the bad identifier, the real column list, and a "Run anyway" override) if the query references a column that doesn't exist on its table(s). Read-only `SELECT`/`WITH` statements run immediately; non-read-only statements prompt for confirmation first.
+- **Verify columns** — a companion button on each SQL block looks up the real columns of every fully-qualified table in the query (`INFORMATION_SCHEMA.COLUMNS`), lists them inline, and flags any identifier the query references that isn't a real column — so invalid-identifier errors are caught before running. The build prompt also bans inventing columns and supplies RDC's canonical Snowflake identity/date fields.
 - **Publish to Confluence** — a "Publish to Confluence" button at the top of the report creates a page in the CRMOPS space (`spaceId 117400502402`) under the build folder (`parentId 118948921497`). The page title follows the convention `[airtable ticket name] - [ASSIGNEES] - [CURRENT DATE]`, where assignees come only from the child (sprint card) Assignees field — never the parent backlog or Product Owner. The page body leads with a back-link to the Airtable ticket.
 - **Realtor.com brand styling** — full-bleed red header with the realtor.com SVG logo pill, Poppins + JetBrains Mono typography, brand-colored panels and code blocks.
